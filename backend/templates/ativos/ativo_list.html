@@ -1,35 +1,62 @@
 {% extends 'base.html' %}
 {% block title %}Ativos{% endblock %}
 {% block content %}
+<div class="container-xl px-0">
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <h1 class="h3 m-0"><i class="bi bi-pc-display"></i> Ativos</h1>
     <a href="{% url 'ativos:cadastrar' %}" class="btn btn-primary"><i class="bi bi-plus-circle"></i> Cadastrar ativo</a>
 </div>
 
-<form method="get" class="hd-card mb-3 d-flex flex-wrap gap-2 align-items-center">
-    <div class="hd-search" style="flex: 1 1 390px; min-width: min(360px, 100%); max-width: 410px;">
-        <button type="submit" class="hd-search-btn" aria-label="Buscar"><i class="bi bi-search"></i></button>
-        <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Buscar por marca, modelo ou patrimônio...">
+<form method="get" class="hd-card mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-12 col-lg-3">
+            <label class="form-label small mb-1" for="f-q">Busca</label>
+            <input type="text" id="f-q" name="q" value="{{ f.q }}" class="form-control" placeholder="Marca, modelo ou patrimônio" autocomplete="off">
+        </div>
+        <div class="col-6 col-md-3 col-lg">
+            <label class="form-label small mb-1" for="f-tipo">Tipo</label>
+            <select id="f-tipo" name="tipo" class="form-select">
+                <option value="">Todos</option>
+                {% for valor, label in tipo_choices %}<option value="{{ valor }}" {% if valor == f.tipo %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-6 col-md-3 col-lg">
+            <label class="form-label small mb-1" for="f-status">Situação</label>
+            <select id="f-status" name="status" class="form-select">
+                <option value="">Todas</option>
+                {% for valor, label in status_choices %}<option value="{{ valor }}" {% if valor == f.status %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-6 col-md-3 col-lg">
+            <label class="form-label small mb-1" for="f-setor">Setor</label>
+            <select id="f-setor" name="setor" class="form-select">
+                <option value="">Todos</option>
+                {% for setor in setores %}<option value="{{ setor.pk }}" {% if f.setor == setor.pk|stringformat:'s' %}selected{% endif %}>{{ setor.nome }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-6 col-md-3 col-lg">
+            <label class="form-label small mb-1" for="f-funcionario">Funcionário</label>
+            <input type="text" id="f-funcionario" name="funcionario" value="{{ f.funcionario }}" class="form-control" placeholder="Nome ou matrícula" autocomplete="off">
+        </div>
+        <div class="col-6 col-md-3 col-lg">
+            <label class="form-label small mb-1" for="f-ordem"><i class="bi bi-sort-down"></i> Ordenar por</label>
+            {# Com resultados na tela, trocar a ordenação já reaplica a busca. #}
+            <select id="f-ordem" name="ordem" class="form-select"{% if buscou %} onchange="this.form.submit()"{% endif %}>
+                {% for valor, rotulo in ordenacoes %}<option value="{{ valor }}" {% if valor == ordem_selecionada %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-12 col-lg-auto d-flex gap-2">
+            <input type="hidden" name="buscar" value="1">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i> Buscar</button>
+            {% if buscou %}<a href="{% url 'ativos:list' %}" class="btn btn-outline-secondary">Limpar</a>{% endif %}
+        </div>
     </div>
-    <select name="tipo" class="form-select flex-grow-1" style="min-width: 160px; max-width: 190px;" onchange="this.form.submit()">
-        <option value="">Todos os tipos</option>
-        {% for valor, label in tipo_choices %}
-        <option value="{{ valor }}" {% if valor == tipo_selecionado %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-    </select>
-    <select name="status" class="form-select flex-grow-1" style="min-width: 205px; max-width: 230px;" onchange="this.form.submit()">
-        <option value="">Todas as situações</option>
-        {% for valor, label in status_choices %}
-        <option value="{{ valor }}" {% if valor == status_selecionado %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-    </select>
-    {% if q or status_selecionado or tipo_selecionado %}
-    <a href="{% url 'ativos:list' %}" class="btn btn-outline-secondary btn-sm">Limpar</a>
-    {% endif %}
 </form>
 
+{% include '_busca_resultados.html' with parte='topo' %}
+
 <div class="hd-card p-0 table-responsive">
-    <table class="table hd-table align-middle mb-0">
+    <table class="table hd-table hd-lista hd-acoes-hover align-middle mb-0">
         <thead>
             <tr>
                 <th class="ps-3">Marca</th>
@@ -38,7 +65,7 @@
                 <th>Patrimônio</th>
                 <th>Status</th>
                 <th>Lotação</th>
-                <th class="pe-3 text-end">Ações</th>
+                <th class="pe-3"><span class="visually-hidden">Ações</span></th>
             </tr>
         </thead>
         <tbody>
@@ -47,49 +74,42 @@
                 <td class="ps-3">{{ ativo.marca }}</td>
                 <td>{{ ativo.modelo }}</td>
                 <td>{{ ativo.get_tipo_display }}</td>
-                <td>{{ ativo.patrimonio }}</td>
+                <td class="hd-codigo">{{ ativo.patrimonio }}</td>
                 <td>
                     {% if ativo.status == 'disponivel' %}
                     <span class="badge rounded-pill status-resolvido">{{ ativo.get_status_display }}</span>
                     {% elif ativo.status == 'em_uso' %}
                     <span class="badge rounded-pill status-aberto">{{ ativo.get_status_display }}</span>
                     {% else %}
-                    <span class="badge rounded-pill status-fechado bg-danger text-white">{{ ativo.get_status_display }}</span>
+                    <span class="badge rounded-pill status-danificado">{{ ativo.get_status_display }}</span>
                     {% endif %}
                 </td>
-                <td>{{ ativo.lotacao_display }}</td>
+                <td>{% include 'ativos/_lotacao.html' %}</td>
                 <td class="pe-3">
-                    <div class="d-flex gap-1 justify-content-end">
-                        <a href="{% url 'ativos:historico' ativo.pk %}" class="btn btn-outline-secondary btn-sm" title="Histórico de movimentações"><i class="bi bi-clock-history"></i></a>
-                        <a href="{% url 'ativos:editar' ativo.pk %}" class="btn btn-outline-primary btn-sm" title="Editar"><i class="bi bi-pencil"></i></a>
+                    <div class="d-flex gap-2 justify-content-end align-items-center">
+                        <a href="{% url 'ativos:historico' ativo.pk %}" class="hd-acao-hover" title="Histórico de movimentações" aria-label="Histórico de movimentações de {{ ativo }}"><i class="bi bi-clock-history"></i></a>
+                        <a href="{% url 'ativos:editar' ativo.pk %}" class="hd-acao-hover" title="Editar" aria-label="Editar {{ ativo }}"><i class="bi bi-pencil"></i></a>
                         {% if user.perfil == 'administrador' %}
                         <form method="post" action="{% url 'ativos:excluir' ativo.pk %}" class="m-0"
-                              onsubmit="return confirm('Excluir o ativo \'{{ ativo }}\'?');">
+                              data-confirmar-titulo="Excluir ativo" data-confirmar-botao="Excluir"
+                              data-confirmar="Excluir o ativo {{ ativo }}?"
+                              data-confirmar-detalhe="Esta ação não pode ser desfeita. Ativos com histórico de movimentação não podem ser excluídos; marque-os como Danificado.">
                             {% csrf_token %}
-                            <button type="submit" class="btn btn-outline-danger btn-sm" title="Excluir"><i class="bi bi-trash"></i></button>
+                            <button type="submit" class="hd-acao-hover hd-acao-perigo" title="Excluir" aria-label="Excluir {{ ativo }}"><i class="bi bi-trash"></i></button>
                         </form>
                         {% endif %}
                     </div>
                 </td>
             </tr>
             {% empty %}
-            <tr><td colspan="7" class="text-center text-muted-hd py-5">Nenhum ativo encontrado.</td></tr>
+            <tr><td colspan="7" class="text-center text-muted-hd py-5">
+                {% if buscou %}Nenhum ativo encontrado com esses filtros.{% else %}<i class="bi bi-search"></i> Preencha os filtros e clique em <strong>Buscar</strong> (sem filtros, lista todos).{% endif %}
+            </td></tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
 
-{% if is_paginated %}
-<nav class="mt-3">
-    <ul class="pagination">
-        {% if page_obj.has_previous %}
-        <li class="page-item"><a class="page-link" href="?q={{ q }}&status={{ status_selecionado }}&tipo={{ tipo_selecionado }}&page={{ page_obj.previous_page_number }}">Anterior</a></li>
-        {% endif %}
-        <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
-        {% if page_obj.has_next %}
-        <li class="page-item"><a class="page-link" href="?q={{ q }}&status={{ status_selecionado }}&tipo={{ tipo_selecionado }}&page={{ page_obj.next_page_number }}">Próxima</a></li>
-        {% endif %}
-    </ul>
-</nav>
-{% endif %}
+{% include '_busca_resultados.html' with parte='rodape' %}
+</div>
 {% endblock %}

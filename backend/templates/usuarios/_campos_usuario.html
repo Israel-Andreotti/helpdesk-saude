@@ -1,0 +1,34 @@
+{% comment %}
+Campos do usuário (cadastrar e editar) em grade: pares lado a lado e o VIP num bloco destacado,
+já que muda regra de negócio (SLA). Uso: {% include 'usuarios/_campos_usuario.html' %}
+{% endcomment %}
+{% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>{% endif %}
+{% if form.username %}
+<div class="mb-3">
+    <label class="form-label" for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
+    {{ form.username }}
+    {% if form.username.errors %}<div class="text-danger small">{{ form.username.errors }}</div>{% endif %}
+</div>
+{% endif %}
+<div class="row g-3 mb-3">
+    {% for field in form %}{% if field.name == 'first_name' or field.name == 'last_name' or field.name == 'email' or field.name == 'telefone' or field.name == 'perfil' or field.name == 'setor' %}
+    <div class="col-md-6">
+        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+        {% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}
+    </div>
+    {% endif %}{% endfor %}
+</div>
+{% if form.vip %}
+<div class="hd-bloco-destaque mb-3">
+    <div class="form-check m-0">
+        {{ form.vip }}
+        <label class="form-check-label fw-semibold" for="{{ form.vip.id_for_label }}">
+            <i class="bi bi-star-fill text-warning"></i> {{ form.vip.label }}
+        </label>
+        {% if form.vip.help_text %}<div class="form-text mt-1">{{ form.vip.help_text }}</div>{% endif %}
+        {% if form.vip.errors %}<div class="text-danger small">{{ form.vip.errors }}</div>{% endif %}
+    </div>
+</div>
+{% endif %}

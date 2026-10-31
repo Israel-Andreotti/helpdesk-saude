@@ -15,25 +15,7 @@
         <div class="hd-card">
             <form method="post">
                 {% csrf_token %}
-                {% for field in form %}
-                {% if field.field.widget.input_type == 'checkbox' %}
-                <div class="mb-3 form-check">
-                    {{ field }}
-                    <label class="form-check-label" for="{{ field.id_for_label }}">
-                        {% if field.name == 'vip' %}<i class="bi bi-star-fill text-warning"></i>{% endif %} {{ field.label }}
-                    </label>
-                    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
-                    {% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}
-                </div>
-                {% else %}
-                <div class="mb-3">
-                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                    {{ field }}
-                    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
-                    {% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}
-                </div>
-                {% endif %}
-                {% endfor %}
+                {% include 'usuarios/_campos_usuario.html' %}
                 <div class="d-flex gap-2">
                     <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle"></i> Salvar</button>
                     <a href="{% url 'usuarios:list' %}" class="btn btn-outline-secondary">Cancelar</a>
@@ -50,7 +32,9 @@
                     <div class="small text-muted-hd">Gera uma senha temporária; o usuário troca no próximo login.</div>
                 </div>
                 <form method="post" action="{% url 'usuarios:resetar_senha' object.pk %}" class="m-0"
-                      onsubmit="return confirm('Gerar uma nova senha temporária para {{ object }}?');">
+                      data-confirmar-titulo="Resetar senha" data-confirmar-tipo="primario" data-confirmar-botao="Gerar nova senha"
+                      data-confirmar="Gerar uma nova senha temporária para {{ object.get_full_name|default:object.username }}?"
+                      data-confirmar-detalhe="A senha atual deixa de valer e o usuário terá de trocá-la no próximo login.">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-outline-secondary"><i class="bi bi-key"></i> Resetar senha</button>
                 </form>
@@ -74,7 +58,15 @@
                 <span class="small text-muted-hd">Você não pode desativar a própria conta.</span>
                 {% else %}
                 <form method="post" action="{% url 'usuarios:toggle_ativo' object.pk %}" class="m-0"
-                      onsubmit="return confirm('{% if object.is_active %}Desativar{% else %}Reativar{% endif %} {{ object }}?');">
+                      {% if object.is_active %}
+                      data-confirmar-titulo="Desativar usuário" data-confirmar-botao="Desativar"
+                      data-confirmar="Desativar {{ object.get_full_name|default:object.username }}?"
+                      data-confirmar-detalhe="O login fica bloqueado. O histórico de chamados e ativos é mantido."
+                      {% else %}
+                      data-confirmar-titulo="Reativar usuário" data-confirmar-tipo="primario" data-confirmar-botao="Reativar"
+                      data-confirmar="Reativar {{ object.get_full_name|default:object.username }}?"
+                      data-confirmar-detalhe="O usuário volta a poder entrar no sistema."
+                      {% endif %}>
                     {% csrf_token %}
                     {% if object.is_active %}
                     <button type="submit" class="btn btn-outline-danger"><i class="bi bi-slash-circle"></i> Desativar</button>

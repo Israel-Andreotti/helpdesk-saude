@@ -4,29 +4,25 @@
 <div class="row justify-content-center">
     <div class="col-md-6">
         <h1 class="h3 mb-3"><i class="bi bi-person-plus"></i> Cadastrar usuário</h1>
+        {% if solicitacao %}
+        <div class="alert alert-primary d-flex align-items-center gap-2 py-2 small">
+            <i class="bi bi-ticket-detailed"></i>
+            <span>Pedido do chamado <a href="{% url 'chamados:detail' solicitacao.chamado_id %}" class="alert-link">{{ solicitacao.chamado.codigo }}</a>
+            — dados preenchidos pelo gestor. Confira e ajuste o login se precisar.</span>
+        </div>
+        {% endif %}
         <div class="hd-card">
             <form method="post">
                 {% csrf_token %}
-                {% for field in form %}
-                {% if field.field.widget.input_type == 'checkbox' %}
-                <div class="mb-3 form-check">
-                    {{ field }}
-                    <label class="form-check-label" for="{{ field.id_for_label }}">
-                        {% if field.name == 'vip' %}<i class="bi bi-star-fill text-warning"></i>{% endif %} {{ field.label }}
-                    </label>
-                    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
-                    {% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}
+                {% include 'usuarios/_campos_usuario.html' %}
+                <div class="alert alert-info d-flex align-items-center gap-2 py-2 small mb-3" role="note">
+                    <i class="bi bi-shield-lock-fill"></i>
+                    {% if solicitacao %}
+                    <span>A <strong>matrícula</strong> e um <strong>link de ativação</strong> (uso único, válido por 48h) são gerados ao cadastrar. O gestor vê o link no chamado e o funcionário cria a própria senha.</span>
+                    {% else %}
+                    <span>A <strong>matrícula</strong> e uma <strong>senha temporária</strong> são geradas automaticamente ao cadastrar.</span>
+                    {% endif %}
                 </div>
-                {% else %}
-                <div class="mb-3">
-                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                    {{ field }}
-                    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
-                    {% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}
-                </div>
-                {% endif %}
-                {% endfor %}
-                <div class="form-text mb-3">A matrícula e a senha de acesso são geradas automaticamente ao cadastrar.</div>
                 <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle"></i> Cadastrar</button>
             </form>
         </div>

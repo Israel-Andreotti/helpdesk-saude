@@ -72,6 +72,20 @@ class Subcategoria(models.Model):
     prioridade = models.CharField(max_length=10, choices=Prioridade.choices, default=Prioridade.MEDIA)
     # Incidente ou requisição de serviço: herdado pelos chamados abertos nessa subcategoria.
     tipo = models.CharField(max_length=10, choices=TipoChamado.choices, default=TipoChamado.INCIDENTE)
+    class PedidoUsuario(models.TextChoices):
+        NENHUM = '', 'Não'
+        CRIACAO = 'criacao', 'Criação de usuário'
+        EXCLUSAO = 'exclusao', 'Exclusão de usuário'
+
+    # Pedidos de conta que só gestores (solicitantes VIP) abrem. Criação: informa os dados do funcionário
+    # (SolicitacaoUsuario); a TI cria o usuário e entrega um link de ativação. Exclusão: informa nome
+    # completo e matrícula de quem sai; a TI desativa o usuário.
+    pedido_usuario = models.CharField(
+        'Pedido de usuário (só gestores)',
+        max_length=10, choices=PedidoUsuario.choices, default=PedidoUsuario.NENHUM, blank=True,
+        help_text='Criação: pede os dados do funcionário e gera um link de ativação. '
+                  'Exclusão: pede nome completo e matrícula. Ambos só para gestores (solicitantes VIP).',
+    )
 
     class Meta:
         ordering = ['nome']
@@ -81,6 +95,18 @@ class Subcategoria(models.Model):
 
     def __str__(self):
         return f'{self.categoria} > {self.nome}'
+
+    @property
+    def so_gestor(self):
+        return bool(self.pedido_usuario)
+
+    @property
+    def cria_usuario(self):
+        return self.pedido_usuario == self.PedidoUsuario.CRIACAO
+
+    @property
+    def exclui_usuario(self):
+        return self.pedido_usuario == self.PedidoUsuario.EXCLUSAO
 
 
 class SLAPrioridade(models.Model):
@@ -300,6 +326,15 @@ class Chamado(models.Model):
         return bool(prazo and timezone.now() <= prazo)
 
     @classmethod
+    def fechados_para_avaliar(cls, solicitante):
+        """Chamados do solicitante fechados há pouco, ainda sem avaliação e dentro do prazo de
+        reabertura: ele é avisado para avaliar o atendimento ou reabrir se o problema continua."""
+        limite = timezone.now() - timedelta(days=cls.DIAS_REABERTURA)
+        return cls.objects.filter(
+            solicitante=solicitante, status=cls.Status.FECHADO, avaliacao__isnull=True, fechado_em__gte=limite,
+        ).order_by('-fechado_em')
+
+    @classmethod
     def respostas_nao_vistas(cls, tecnico):
         """Chamados abertos do técnico em que o solicitante respondeu e ele ainda não abriu."""
         return cls.objects.filter(atendente=tecnico, resposta_solicitante_em__isnull=False).exclude(
@@ -389,10 +424,12 @@ class ProcedimentoEntry(models.Model):
         INTERNO = 'interno', 'Nota interna'
         # Registrada pelo próprio solicitante ao responder um chamado "aguardando solicitante".
         RESPOSTA = 'resposta', 'Resposta do solicitante'
+        # Obrigatória ao encerrar o chamado: o que foi feito para resolver. Pública (o solicitante vê).
+        ENCERRAMENTO = 'encerramento', 'Anotações de encerramento'
 
     chamado = models.ForeignKey(Chamado, on_delete=models.CASCADE, related_name='procedimentos')
     autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
-    tipo = models.CharField(max_length=10, choices=Tipo.choices, default=Tipo.PUBLICO)
+    tipo = models.CharField(max_length=15, choices=Tipo.choices, default=Tipo.PUBLICO)
     texto = models.TextField()
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -423,12 +460,15 @@ class EventoChamado(models.Model):
         FECHADO = 'fechado', 'Fechamento'
         AVALIADO = 'avaliado', 'Avaliação'
         MOVIMENTACAO = 'movimentacao', 'Movimentação de ativo'
+        USUARIO_CRIADO = 'usuario_criado', 'Usuário criado'
+        CONTA_ATIVADA = 'conta_ativada', 'Conta ativada'
 
     ICONES = {
         'abertura': 'bi-plus-circle', 'atribuicao': 'bi-person-check', 'reatribuicao': 'bi-arrow-left-right',
         'aguardando': 'bi-pause-circle', 'retomado': 'bi-play-circle', 'respondido': 'bi-reply',
         'resolvido': 'bi-check-circle', 'reaberto': 'bi-arrow-counterclockwise', 'fechado': 'bi-lock',
-        'avaliado': 'bi-star', 'movimentacao': 'bi-pc-display',
+        'avaliado': 'bi-star', 'movimentacao': 'bi-pc-display', 'usuario_criado': 'bi-person-plus',
+        'conta_ativada': 'bi-person-check',
     }
 
     chamado = models.ForeignKey(Chamado, on_delete=models.CASCADE, related_name='eventos')
@@ -459,3 +499,54 @@ class EventoChamado(models.Model):
             return 'Sistema'
         return self.autor.get_full_name() or self.autor.username
 
+
+class SolicitacaoUsuario(models.Model):
+    """Dados do funcionário num chamado de pedido de novo usuário (subcategoria de criação de usuário),
+    informados pelo gestor ao abrir. A TI cria o usuário a partir daqui e o sistema gera um link de
+    ativação de uso único (o funcionário cria a própria senha; ninguém vê senha). O gestor vê o link
+    no chamado e o repassa. O link vale settings.PASSWORD_RESET_TIMEOUT e deixa de valer ao ser usado
+    ou quando um novo é gerado."""
+
+    chamado = models.OneToOneField(Chamado, on_delete=models.CASCADE, related_name='solicitacao_usuario')
+    first_name = models.CharField('Nome', max_length=150)
+    last_name = models.CharField('Sobrenome', max_length=150)
+    email = models.EmailField('E-mail')
+    telefone = models.CharField('Telefone', max_length=20, blank=True)
+    setor = models.ForeignKey('usuarios.Setor', on_delete=models.SET_NULL, null=True, related_name='+')
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+        help_text='Usuário criado pela TI a partir desta solicitação.',
+    )
+    link_ativacao = models.CharField(max_length=255, blank=True)
+    link_gerado_em = models.DateTimeField(null=True, blank=True)
+    ativado_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Solicitação de usuário'
+        verbose_name_plural = 'Solicitações de usuário'
+
+    def __str__(self):
+        return f'{self.nome_completo} ({self.chamado.codigo})'
+
+    @property
+    def nome_completo(self):
+        return f'{self.first_name} {self.last_name}'.strip()
+
+    @classmethod
+    def links_prontos(cls, gestor):
+        """Pedidos do gestor com o link de ativação pronto e ainda válido, à espera de ser repassado/usado."""
+        limite = timezone.now() - timedelta(seconds=settings.PASSWORD_RESET_TIMEOUT)
+        return cls.objects.filter(
+            chamado__solicitante=gestor, usuario__isnull=False, ativado_em__isnull=True, link_gerado_em__gte=limite,
+        ).select_related('chamado').order_by('-link_gerado_em')
+
+    @property
+    def link_valido_ate(self):
+        if not self.link_gerado_em:
+            return None
+        return self.link_gerado_em + timedelta(seconds=settings.PASSWORD_RESET_TIMEOUT)
+
+    @property
+    def link_expirado(self):
+        valido_ate = self.link_valido_ate
+        return bool(valido_ate and timezone.now() > valido_ate)

@@ -1,6 +1,35 @@
 from django.conf import settings
 from django.db import models
+from django.db.models.functions import Lower
 from django.utils import timezone
+
+
+class Marca(models.Model):
+    """Fabricante de equipamento (ex.: Dell, HP). Nome único sem diferenciar maiúsculas, para não
+    surgirem variações do mesmo fabricante. Criada por administradores (no formulário do ativo ou no admin)."""
+
+    nome = models.CharField(max_length=100)
+
+    class Meta:
+        ordering = ['nome']
+        constraints = [models.UniqueConstraint(Lower('nome'), name='marca_nome_unico')]
+
+    def __str__(self):
+        return self.nome
+
+
+class Modelo(models.Model):
+    """Modelo de equipamento de uma marca (ex.: Dell → Latitude 5440). Único por marca."""
+
+    marca = models.ForeignKey(Marca, on_delete=models.PROTECT, related_name='modelos')
+    nome = models.CharField(max_length=100)
+
+    class Meta:
+        ordering = ['marca__nome', 'nome']
+        constraints = [models.UniqueConstraint('marca', Lower('nome'), name='modelo_nome_unico_por_marca')]
+
+    def __str__(self):
+        return self.nome
 
 
 class Ativo(models.Model):
@@ -17,8 +46,8 @@ class Ativo(models.Model):
         DISPONIVEL = 'disponivel', 'Disponível'
         DANIFICADO = 'danificado', 'Danificado'
 
-    marca = models.CharField(max_length=100)
-    modelo = models.CharField(max_length=100)
+    # A marca vem do modelo (ativo.marca); assim marca e modelo nunca ficam inconsistentes.
+    modelo = models.ForeignKey(Modelo, on_delete=models.PROTECT, related_name='ativos')
     tipo = models.CharField(max_length=20, choices=Tipo.choices, default=Tipo.OUTRO)
     # Gerado automaticamente no save() (sequencial, a partir de 100001).
     patrimonio = models.CharField('Nº de patrimônio', max_length=50, unique=True, blank=True, editable=False)
@@ -45,7 +74,7 @@ class Ativo(models.Model):
     criado_em = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['marca', 'modelo']
+        ordering = ['modelo__marca__nome', 'modelo__nome']
 
     @staticmethod
     def _gerar_patrimonio():
@@ -62,11 +91,11 @@ class Ativo(models.Model):
     def save(self, *args, **kwargs):
         if not self.patrimonio:
             self.patrimonio = self._gerar_patrimonio()
-        if self.marca:
-            self.marca = self.marca.strip().capitalize()
-        if self.modelo:
-            self.modelo = self.modelo.strip().capitalize()
         super().save(*args, **kwargs)
+
+    @property
+    def marca(self):
+        return self.modelo.marca
 
     def __str__(self):
         return f'{self.marca} {self.modelo} ({self.patrimonio})'
@@ -82,6 +111,11 @@ class Ativo(models.Model):
     @property
     def tem_movimentacao_pendente(self):
         return self.movimentacoes.filter(status=MovimentacaoAtivo.Status.PENDENTE).exists()
+
+    @property
+    def movimentacao_pendente(self):
+        """A movimentação pendente do ativo (há no máximo uma), com o chamado dela; ou None."""
+        return self.movimentacoes.filter(status=MovimentacaoAtivo.Status.PENDENTE).select_related('chamado').first()
 
 
 class MovimentacaoAtivo(models.Model):

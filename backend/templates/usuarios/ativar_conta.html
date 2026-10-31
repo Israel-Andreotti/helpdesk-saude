@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Ativar conta{% endblock %}
+{% block content %}
+<div class="row justify-content-center hd-login-page">
+    <div class="col-md-5 col-lg-4">
+        <div class="hd-card">
+            <div class="hd-login-icon"><i class="bi bi-person-check"></i></div>
+            {% if validlink %}
+            <h1 class="h4 mb-1 text-center">Ative sua conta</h1>
+            <p class="text-muted-hd text-center mb-3">
+                Olá, <strong>{{ form.user.first_name|default:form.user.username }}</strong>. Seu usuário é
+                <strong>{{ form.user.username }}</strong>. Crie a senha que você vai usar para entrar.
+            </p>
+            <form method="post">
+                {% csrf_token %}
+                {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>{% endif %}
+                {% for field in form %}
+                <div class="mb-3">
+                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}
+                </div>
+                {% endfor %}
+                <div class="form-text mb-3">Use pelo menos 8 caracteres, sem ser só números nem parecida com seu nome.</div>
+                <button type="submit" class="btn btn-primary w-100"><i class="bi bi-check-circle"></i> Ativar conta</button>
+            </form>
+            {% else %}
+            <h1 class="h4 mb-2 text-center">Link inválido ou expirado</h1>
+            <p class="text-muted-hd text-center mb-3">
+                Este link de ativação já foi usado ou passou do prazo. Peça ao seu gestor um novo link
+                (ele solicita à TI pelo chamado).
+            </p>
+            <a href="{% url 'usuarios:login' %}" class="btn btn-outline-primary w-100">Ir para o login</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

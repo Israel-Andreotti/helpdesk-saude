@@ -100,3 +100,36 @@ class SLAECategoriaTests(TestCase):
         self.assertEqual(categoria.nome, 'Rede e Internet')
         self.assertRedirects(resposta, reverse('chamados:categoria_editar', args=[categoria.pk]))
         self.assertIn('Categoria "Rede e Internet" atualizada.', mensagens(resposta))
+
+
+class RenomearSubcategoriaTests(TestCase):
+    def setUp(self):
+        self.c = cliente(criar_admin())
+        self.sub = criar_subcategoria(nome='Impresora')
+        self.url = reverse('chamados:subcategoria_renomear', args=[self.sub.pk])
+
+    def test_corrige_o_nome_sem_mudar_chamados_ja_abertos(self):
+        chamado = criar_chamado(subcategoria=self.sub)
+        titulo_antes = chamado.titulo
+
+        resposta = self.c.post(self.url, {'nome': '  Impressora '}, follow=True)
+
+        self.sub.refresh_from_db()
+        chamado.refresh_from_db()
+        self.assertEqual(self.sub.nome, 'Impressora')
+        self.assertEqual(chamado.titulo, titulo_antes)
+        self.assertRedirects(resposta, reverse('chamados:categoria_editar', args=[self.sub.categoria_id]))
+        self.assertTrue(any('renomeada' in m for m in mensagens(resposta)))
+
+    def test_recusa_nome_vazio_ou_repetido_na_categoria(self):
+        Subcategoria.objects.create(categoria=self.sub.categoria, nome='Scanner')
+
+        for nome, trecho in [('   ', 'não pode ficar vazio'), ('scanner', 'Já existe')]:
+            with self.subTest(nome=nome):
+                resposta = self.c.post(self.url, {'nome': nome}, follow=True)
+                self.sub.refresh_from_db()
+                self.assertEqual(self.sub.nome, 'Impresora')
+                self.assertTrue(any(trecho in m for m in mensagens(resposta)))
+
+    def test_tecnico_nao_renomeia(self):
+        self.assertEqual(cliente(criar_tecnico()).post(self.url, {'nome': 'X'}).status_code, 403)

@@ -1,0 +1,18 @@
+{% load chamado_extras %}{% comment %}
+Prazo SLA resumido para listas (.hd-lista): texto curto colorido + barrinha do % consumido.
+Uso: {% include 'chamados/_sla_resumo.html' with chamado=ch %}
+{% endcomment %}
+{% if chamado.sla_concluido %}
+<span class="text-muted-hd">Concluído</span>
+{% elif chamado.sla_pausado %}
+<span class="hd-sla-texto sla-pausado" title="SLA pausado — aguardando o solicitante{% if chamado.sla_estourado %}. O prazo estourou antes da pausa{% endif %}"><i class="bi bi-pause-fill"></i> Pausado{% if chamado.sla_estourado %} · <span class="sla-critico">estourado</span>{% endif %}</span>
+{% elif chamado.sla_estourado %}
+<span class="hd-sla-texto sla-critico" title="Estourou {{ chamado.prazo_sla|date:'d M, H:i' }}"><span class="hd-dot"></span>Estourado há {{ chamado|sla_distancia }}</span>
+{% else %}
+<span class="hd-sla-texto sla-{{ chamado.sla_cor }}" title="{{ chamado.sla_percentual }}% do prazo consumido · vence {{ chamado.prazo_sla|date:'d M, H:i' }}"><span class="hd-dot"></span>Vence em {{ chamado|sla_distancia }}</span>
+{% endif %}
+{% if not chamado.sla_concluido %}
+<div class="sla-bar-track hd-sla-barra" title="{{ chamado.sla_percentual }}% do prazo consumido">
+    <div class="sla-bar-fill sla-{{ chamado.sla_cor }}" style="width: {{ chamado.sla_percentual }}%"></div>
+</div>
+{% endif %}

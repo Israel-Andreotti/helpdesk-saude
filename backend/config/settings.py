@@ -85,11 +85,15 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.middleware.ExpirarSessaoInativaMiddleware',
     'core.middleware.ForcarTrocaSenhaMiddleware',
+    'core.middleware.PaginaDeErro405Middleware',
     # Por último, como pede o django-axes: bloqueia o login depois de várias senhas erradas.
     'axes.middleware.AxesMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
+
+# Formulário recusado por CSRF (aberto há muito tempo, outra sessão): página própria com menu e usuário.
+CSRF_FAILURE_VIEW = 'core.views.falha_csrf'
 
 TEMPLATES = [
     {
@@ -153,6 +157,10 @@ AXES_LOCKOUT_TEMPLATE = 'usuarios/login_bloqueado.html'
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
+# Validade do link de ativação de conta (pedido de novo usuário via chamado). Usa o gerador de tokens
+# de redefinição de senha do Django: o link vale até este prazo e deixa de valer quando a senha é criada.
+PASSWORD_RESET_TIMEOUT = 60 * 60 * 48  # 48 horas
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -204,7 +212,7 @@ SESSION_COOKIE_AGE = 60 * 60 * 12
 SESSAO_INATIVIDADE_MINUTOS = config('SESSAO_INATIVIDADE_MINUTOS', default=30, cast=int)
 
 LOGIN_URL = 'usuarios:login'
-LOGIN_REDIRECT_URL = 'core:dashboard'
+LOGIN_REDIRECT_URL = 'core:inicio'
 LOGOUT_REDIRECT_URL = 'usuarios:login'
 
 # Default primary key field type

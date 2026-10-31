@@ -259,6 +259,7 @@ input[type="password"]::-ms-clear {
 .badge.status-aguardando { background-color: #ede9fe; color: #6d28d9; }
 .badge.status-resolvido { background-color: #dcfce7; color: #15803d; }
 .badge.status-fechado { background-color: #e2e8f0; color: #475569; }
+.badge.status-danificado { background-color: #fee2e2; color: #b91c1c; }
 
 /* Badges de prioridade */
 .badge.prioridade-baixa { background-color: #dcfce7; color: #15803d; }
@@ -305,6 +306,66 @@ input[type="password"]::-ms-clear {
 .text-muted-hd {
     color: var(--hd-text-muted) !important;
 }
+
+/* Páginas de erro (_erro.html): ícone com a cor do tom (azul padrão, âmbar = alerta, vermelho = perigo). */
+.hd-erro-pagina {
+    min-height: calc(100vh - 12rem);
+    display: flex;
+    align-items: center;
+}
+
+.hd-erro {
+    padding: 2.25rem 2rem;
+}
+
+.hd-erro-icone {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1rem;
+    color: #fff;
+    font-size: 1.8rem;
+    background: linear-gradient(135deg, var(--hd-primary), #60a5fa);
+}
+
+.hd-erro-alerta .hd-erro-icone { background: linear-gradient(135deg, #d97706, #fbbf24); }
+.hd-erro-perigo .hd-erro-icone { background: linear-gradient(135deg, #dc2626, #f87171); }
+
+.hd-erro-codigo {
+    display: inline-block;
+    margin-bottom: .6rem;
+    padding: .1rem .65rem;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: var(--hd-text-muted);
+    font-size: .78rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+/* Modal de confirmação (base.html, <form data-confirmar>). */
+.hd-confirmar {
+    border: 0;
+    border-radius: 14px;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, .18);
+}
+
+.hd-confirmar-icone {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+}
+
+.hd-confirmar-perigo { background: #fee2e2; color: #dc2626; }
+.hd-confirmar-primario { background: #dbeafe; color: var(--hd-primary); }
 
 /* Avatar do solicitante */
 .hd-avatar {
@@ -456,9 +517,235 @@ input[type="password"]::-ms-clear {
 
 .badge.badge-resposta { background-color: #dbeafe; color: #1d4ed8; }
 
+/* Anotações de encerramento: o desfecho do atendimento, em verde mais forte que o procedimento comum. */
+.hd-timeline-marker.marker-encerramento {
+    border-color: #15803d;
+    background: #15803d;
+    color: #fff;
+}
+
+.badge.badge-encerramento { background-color: #dcfce7; color: #166534; }
+
 .hd-timeline-content {
     background: #f8fafc;
     border: 1px solid var(--hd-border);
     border-radius: .6rem;
+    padding: .75rem 1rem;
+}
+
+/* Fila de chamados: colunas configuráveis (menu "Colunas" e arrastar o cabeçalho) */
+.hd-fila tr > :first-child { padding-left: 1rem; }
+.hd-fila tr > :last-child { padding-right: 1rem; }
+.hd-fila thead th[draggable="true"] { cursor: grab; user-select: none; }
+.hd-fila thead th.hd-arrastando { opacity: .45; }
+.hd-fila thead th.hd-soltar-antes { box-shadow: inset 3px 0 0 var(--hd-primary); }
+.hd-fila thead th.hd-soltar-depois { box-shadow: inset -3px 0 0 var(--hd-primary); }
+
+.hd-menu-colunas { min-width: 230px; }
+.hd-menu-colunas .hd-coluna-opcao {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    cursor: pointer;
+}
+.hd-menu-colunas .hd-coluna-opcao.ativa { color: var(--hd-primary); font-weight: 500; }
+.hd-menu-colunas .hd-coluna-opcao:has(input:disabled) { cursor: default; opacity: .75; }
+
+/* Listas (.hd-lista: fila, histórico, ativos, usuários, indicadores...): visual enxuto em comum.
+   Código discreto e prazo SLA em texto curto + barrinha (templates/chamados/_sla_resumo.html). */
+.hd-lista .hd-codigo { font-size: .8rem; font-weight: 500; color: var(--hd-text-muted); white-space: nowrap; }
+.hd-lista .hd-sla { font-size: .8rem; white-space: nowrap; }
+.hd-sla-texto { font-weight: 500; }
+.hd-sla-texto.sla-ok { color: var(--hd-text-muted); }
+.hd-sla-texto.sla-atencao { color: #b45309; }
+.hd-sla-texto.sla-critico, .hd-sla-texto .sla-critico { color: #991b1b; }
+.hd-sla-texto.sla-pausado { color: #64748b; }
+.hd-sla-texto.sla-ok .hd-dot { background-color: #22c55e; }
+
+/* Ponto colorido (usa a cor do texto) */
+.hd-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background-color: currentColor;
+    margin-right: .4rem;
+    vertical-align: 1px;
+}
+
+/* Listas: prioridade e status como ponto + texto colorido, sem o fundo do badge */
+.hd-lista .badge[class*="status-"],
+.hd-lista .badge[class*="prioridade-"] {
+    background-color: transparent;
+    padding: 0;
+    font-size: .8rem;
+    font-weight: 500;
+    border-radius: 0;
+}
+.hd-lista .badge[class*="status-"]::before,
+.hd-lista .badge[class*="prioridade-"]::before {
+    content: "";
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background-color: currentColor;
+    margin-right: .4rem;
+    vertical-align: 1px;
+}
+
+/* Listas: textos alinhados à esquerda (leitura em "F"); números seguem à direita com .text-end */
+.hd-lista th:not(.text-end), .hd-lista td:not(.text-end):not(.text-center) { text-align: left; }
+
+/* Fila: larguras das colunas. A tabela distribui o espaço livre entre as colunas, proporcional ao
+   conteúdo (o título, mais largo, recebe mais), sem deixar um vão só no meio; as colunas curtas não
+   quebram linha. Títulos muito longos quebram em até 2 linhas antes de cortar. */
+.hd-fila [data-col="titulo"] { min-width: 220px; }
+.hd-fila [data-col="codigo"],
+.hd-fila [data-col="prioridade"],
+.hd-fila [data-col="status"],
+.hd-fila [data-col="setor"],
+.hd-fila [data-col="solicitante"],
+.hd-fila [data-col="tecnico"],
+.hd-fila [data-col="criado_em"],
+.hd-fila [data-col="prazo_sla"] { white-space: nowrap; }
+.hd-lista .hd-titulo {
+    min-width: 200px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    line-height: 1.3;
+}
+
+/* Fila: "Atribuir a mim" como ghost button, só aparece ao passar o mouse na linha (no lugar de
+   "Não atribuído"). Com teclado, aparece quando o foco entra na linha (o botão continua alcançável
+   pelo Tab, só fica visualmente escondido). Em telas de toque (sem hover) fica sempre visível. */
+.hd-btn-atribuir {
+    border: 0;
+    background: transparent;
+    padding: .15rem 0;
+    color: #15803d;
+    font-weight: 500;
+}
+.hd-btn-atribuir:hover,
+.hd-btn-atribuir:focus-visible {
+    color: #166534;
+    background: transparent;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+.hd-fila .hd-nao-atribuido { display: none; }
+@media (hover: hover) {
+    .hd-fila .hd-nao-atribuido { display: inline; }
+    .hd-fila .hd-form-atribuir {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+    .hd-fila tr:hover .hd-nao-atribuido,
+    .hd-fila tr:focus-within .hd-nao-atribuido { display: none; }
+    .hd-fila tr:hover .hd-form-atribuir,
+    .hd-fila tr:focus-within .hd-form-atribuir {
+        position: static;
+        width: auto;
+        height: auto;
+        overflow: visible;
+        clip-path: none;
+    }
+}
+
+/* Listas: barrinha do SLA, menor que a da página do chamado */
+.hd-lista .hd-sla-barra { height: 3px; width: 90px; margin-top: .3rem; }
+
+/* Setores: switch de setor crítico — ligado em vermelho, desligado no cinza padrão */
+.form-check-input.hd-switch-critico { cursor: pointer; }
+.form-check-input.hd-switch-critico:checked { background-color: #dc2626; border-color: #dc2626; }
+.form-check-input.hd-switch-critico:focus { border-color: #fca5a5; box-shadow: 0 0 0 .2rem rgba(220, 38, 38, .2); }
+.form-check-input.hd-switch-critico:checked:focus { border-color: #dc2626; }
+
+/* Ações discretas que só aparecem ao passar o mouse na linha (ou com o foco do teclado nela).
+   Uso: container .hd-acoes-hover; link/botão .hd-acao-hover. Em telas de toque ficam sempre visíveis. */
+.hd-acao-hover {
+    color: var(--hd-text-muted);
+    text-decoration: none;
+    padding: 0 .25rem;
+    line-height: 1;
+}
+.hd-acao-hover:hover, .hd-acao-hover:focus-visible { color: var(--hd-primary); }
+@media (hover: hover) {
+    .hd-acoes-hover .hd-acao-hover { opacity: 0; transition: opacity .12s ease, color .12s ease; }
+    /* Linha com o mouse: o lápis aparece na cor do texto principal (contraste pleno), azul sobre ele. */
+    .hd-acoes-hover tr:hover .hd-acao-hover,
+    .hd-acoes-hover li:hover .hd-acao-hover,
+    .hd-acoes-hover .hd-acao-hover:focus-visible { opacity: 1; color: var(--hd-text); }
+    .hd-acoes-hover .hd-acao-hover:hover,
+    .hd-acoes-hover .hd-acao-hover:focus-visible { color: var(--hd-primary); }
+}
+
+button.hd-acao-hover { border: 0; background: transparent; }
+/* Ação destrutiva no hover (ex.: excluir): vermelha quando aparece */
+.hd-acao-hover.hd-acao-perigo { color: #dc2626; }
+.hd-acao-hover.hd-acao-perigo:hover, .hd-acao-hover.hd-acao-perigo:focus-visible { color: #991b1b; }
+@media (hover: hover) {
+    .hd-acoes-hover tr:hover .hd-acao-hover.hd-acao-perigo { color: #dc2626; }
+    .hd-acoes-hover tr:hover .hd-acao-hover.hd-acao-perigo:hover { color: #991b1b; }
+}
+
+/* Catálogo: ação da categoria (engrenagem) sempre visível, mas discreta — não compete com os lápis das linhas */
+.hd-acao-categoria {
+    color: var(--hd-text-muted);
+    text-decoration: none;
+    font-size: 1rem;
+    line-height: 1;
+    padding: .25rem;
+    border-radius: .375rem;
+}
+.hd-acao-categoria:hover, .hd-acao-categoria:focus-visible { color: var(--hd-primary); background-color: #eff6ff; }
+
+/* Catálogo: subcategorias em 3 colunas (nome | tipo | prioridade), espalhadas pela largura do card */
+.hd-catalogo-tabela th {
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--hd-text-muted);
+    font-weight: 600;
+    border-bottom-width: 1px;
+}
+.hd-catalogo-tabela { table-layout: fixed; }
+.hd-catalogo-tabela th:first-child { width: 50%; }
+.hd-catalogo-tabela th:not(:first-child) { width: 25%; }
+.hd-catalogo-tabela th:not(:first-child),
+.hd-catalogo-tabela td:not(:first-child) { padding-left: 1rem; }
+.hd-catalogo-tabela th:first-child,
+.hd-catalogo-tabela td:first-child { padding-left: 0; }
+.hd-catalogo-tabela tbody tr:last-child td { border-bottom: 0; }
+
+/* Botão ghost de ação destrutiva: só o ícone vermelho, sem borda nem fundo */
+.hd-btn-ghost-perigo { border: 0; background: transparent; color: #dc2626; padding: .2rem .4rem; }
+.hd-btn-ghost-perigo:hover,
+.hd-btn-ghost-perigo:focus-visible { color: #991b1b; background-color: #fef2f2; }
+
+/* Input discreto (ex.: nome da subcategoria): parece texto; borda só no hover e no foco */
+.hd-input-discreto {
+    border-color: transparent;
+    background-color: transparent;
+    padding-left: .4rem;
+    margin-left: -.4rem;
+    font-size: 1rem;
+}
+.hd-input-discreto:hover { border-color: var(--hd-border); }
+.hd-input-discreto:focus { background-color: #fff; border-color: #86b7fe; }
+
+/* Bloco destacado para opções que mudam regra de negócio (ex.: Solicitante VIP → SLA menor) */
+.hd-bloco-destaque {
+    background-color: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: .5rem;
     padding: .75rem 1rem;
 }

@@ -1,19 +1,37 @@
 {% extends 'base.html' %}
-{% comment %}Base das páginas de erro 403 e 404 (o 500 é independente: ver 500.html).{% endcomment %}
+{% comment %}
+Base das páginas de erro que têm usuário e request (403, 403_csrf, 404, 405). As que o Django renderiza
+sem contexto (400 e 500) estendem _erro_isolado.html.
+Blocos: icone, codigo, titulo, explicacao, dica (opcional), tom ("" = azul, "alerta" = âmbar, "perigo" = vermelho).
+{% endcomment %}
 {% block content %}
-<div class="row justify-content-center hd-login-page">
-    <div class="col-md-6 col-lg-5">
-        <div class="hd-card text-center">
-            <div class="hd-login-icon"><i class="bi {% block icone %}{% endblock %}"></i></div>
-            <p class="text-muted-hd mb-1">Erro {% block codigo %}{% endblock %}</p>
-            <h1 class="h4 mb-3">{% block titulo %}{% endblock %}</h1>
-            <p class="text-muted-hd mb-4">{% block explicacao %}{% endblock %}</p>
-            {% if user.is_authenticated %}
-            <a href="{% url 'chamados:list' %}" class="btn btn-primary"><i class="bi bi-arrow-left"></i> Voltar aos chamados</a>
-            {% else %}
-            <a href="{% url 'usuarios:login' %}" class="btn btn-primary"><i class="bi bi-box-arrow-in-right"></i> Ir para o login</a>
-            {% endif %}
+<div class="row justify-content-center hd-erro-pagina">
+    <div class="col-md-7 col-lg-5">
+        <div class="hd-card text-center hd-erro {% block tom %}{% endblock %}">
+            <div class="hd-erro-icone"><i class="bi {% block icone %}{% endblock %}"></i></div>
+            <p class="hd-erro-codigo">Erro {% block codigo %}{% endblock %}</p>
+            <h1 class="h4 mb-2">{% block titulo %}{% endblock %}</h1>
+            <p class="text-muted-hd mb-3">{% block explicacao %}{% endblock %}</p>
+            {% block dica %}{% endblock %}
+            <div class="d-flex flex-wrap justify-content-center gap-2 mt-4">
+                <button type="button" class="btn btn-outline-secondary d-none" data-erro-voltar><i class="bi bi-arrow-left"></i> Voltar</button>
+                {% if user.is_authenticated %}
+                <a href="{% url 'core:inicio' %}" class="btn btn-primary"><i class="bi bi-house"></i> Ir para o início</a>
+                {% else %}
+                <a href="{% url 'usuarios:login' %}" class="btn btn-primary"><i class="bi bi-box-arrow-in-right"></i> Ir para o login</a>
+                {% endif %}
+            </div>
         </div>
     </div>
 </div>
+<script>
+// "Voltar" só aparece quando há uma página anterior no histórico desta aba.
+(function () {
+    var botao = document.querySelector('[data-erro-voltar]');
+    if (botao && window.history.length > 1 && document.referrer) {
+        botao.classList.remove('d-none');
+        botao.addEventListener('click', function () { window.history.back(); });
+    }
+})();
+</script>
 {% endblock %}

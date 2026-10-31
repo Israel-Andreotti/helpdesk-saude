@@ -195,7 +195,7 @@
             <h2 class="h6 mb-1">Incidentes × requisições de serviço</h2>
             <p class="small text-muted-hd mb-2">Incidente: algo parou ou degradou. Requisição: pedido de algo padrão (acesso, instalação, material).</p>
         </div>
-        <table class="table hd-table align-middle mb-0">
+        <table class="table hd-table hd-lista align-middle mb-0">
             <thead>
                 <tr>
                     <th class="ps-3">Tipo</th>
@@ -286,7 +286,7 @@
 
 <div class="hd-card p-0 table-responsive mb-4">
     <div class="px-3 pt-3"><h2 class="h6 mb-2">Desempenho por técnico (fechados no período)</h2></div>
-    <table class="table hd-table align-middle mb-0">
+    <table class="table hd-table hd-lista align-middle mb-0">
         <thead>
             <tr>
                 <th class="ps-3">Técnico</th>
@@ -439,16 +439,16 @@ function hdPeriodo(select) {
 
 <div class="hd-card p-0 table-responsive mb-4">
     <div class="px-3 pt-3"><h2 class="h6 mb-2">Fila sem atribuição <span class="text-muted-hd fw-normal">(mais urgentes primeiro)</span></h2></div>
-    <table class="table hd-table table-hover align-middle mb-0">
+    <table class="table hd-table hd-lista table-hover align-middle mb-0">
         <thead><tr><th class="ps-3">Prioridade</th><th>Chamado</th><th>Setor</th><th>Aberto há</th><th class="pe-3">Prazo SLA</th></tr></thead>
         <tbody>
             {% for ch in dados.fila_sem_atribuicao %}
             <tr class="clickable-row" data-href="{% url 'chamados:detail' ch.pk %}">
-                <td class="ps-3"><span class="badge rounded-pill {{ ch.prioridade|prioridade_badge }}">{{ ch.get_prioridade_display }}</span></td>
-                <td><span class="text-muted-hd text-nowrap">{{ ch.codigo }}</span> {{ ch.titulo }}</td>
+                <td class="ps-3 text-nowrap"><span class="badge rounded-pill {{ ch.prioridade|prioridade_badge }}">{{ ch.get_prioridade_display }}</span></td>
+                <td><span class="hd-codigo me-2">{{ ch.codigo }}</span>{{ ch.titulo }}</td>
                 <td>{% if ch.setor.critico %}<i class="bi bi-exclamation-triangle-fill text-danger" title="Setor crítico"></i> {% endif %}{{ ch.setor|default:'—' }}</td>
                 <td>{{ ch.criado_em|timesince }}</td>
-                <td class="pe-3">{% if ch.sla_estourado %}<span class="text-danger"><i class="bi bi-exclamation-octagon-fill"></i> {{ ch.sla_tempo_restante_display }}</span>{% else %}{{ ch.sla_tempo_restante_display }}{% endif %}</td>
+                <td class="pe-3 hd-sla">{% include 'chamados/_sla_resumo.html' with chamado=ch %}</td>
             </tr>
             {% empty %}
             <tr><td colspan="5" class="text-center text-muted-hd py-4">Nenhum chamado aguardando atribuição. 🎉</td></tr>
@@ -459,7 +459,7 @@ function hdPeriodo(select) {
 
 <div class="hd-card p-0 table-responsive mb-4">
     <div class="px-3 pt-3"><h2 class="h6 mb-2">Carga por técnico</h2></div>
-    <table class="table hd-table align-middle mb-0">
+    <table class="table hd-table hd-lista align-middle mb-0">
         <thead>
             <tr>
                 <th class="ps-3">Técnico</th>
@@ -492,16 +492,16 @@ function hdPeriodo(select) {
         <h2 class="h6 mb-1">Chamados travados por analista</h2>
         <p class="small text-muted-hd mb-2">Atribuídos e com SLA estourado ou em andamento sem atualização há mais de {{ dados.horas_parado }}h.</p>
     </div>
-    <table class="table hd-table table-hover align-middle mb-0">
+    <table class="table hd-table hd-lista table-hover align-middle mb-0">
         <thead><tr><th class="ps-3">Técnico</th><th>Chamado</th><th>Situação</th><th>Última atualização</th><th class="pe-3">Prazo SLA</th></tr></thead>
         <tbody>
             {% for ch in dados.travados %}
             <tr class="clickable-row" data-href="{% url 'chamados:detail' ch.pk %}">
                 <td class="ps-3">{{ ch.atendente.get_full_name|default:ch.atendente.username }}</td>
-                <td><span class="text-muted-hd text-nowrap">{{ ch.codigo }}</span> {{ ch.titulo }}</td>
-                <td><span class="badge rounded-pill {{ ch.status|status_badge }}">{{ ch.get_status_display }}</span></td>
+                <td><span class="hd-codigo me-2">{{ ch.codigo }}</span>{{ ch.titulo }}</td>
+                <td class="text-nowrap"><span class="badge rounded-pill {{ ch.status|status_badge }}">{{ ch.get_status_display }}</span></td>
                 <td>há {{ ch.atualizado_em|timesince }}</td>
-                <td class="pe-3">{% if ch.sla_estourado %}<span class="text-danger"><i class="bi bi-exclamation-octagon-fill"></i> {{ ch.sla_tempo_restante_display }}</span>{% else %}{{ ch.sla_tempo_restante_display }}{% endif %}</td>
+                <td class="pe-3 hd-sla">{% include 'chamados/_sla_resumo.html' with chamado=ch %}</td>
             </tr>
             {% empty %}
             <tr><td colspan="5" class="text-center text-muted-hd py-4">Nenhum chamado travado.</td></tr>

@@ -61,7 +61,7 @@ class RegrasDeMovimentacaoTests(TestCase):
         casos = [
             ('', None, 'Informe o número de patrimônio'),
             ('999999', None, 'Nenhum ativo encontrado'),
-            (em_outro_setor.patrimonio, None, 'não na TI nem em'),
+            (em_outro_setor.patrimonio, None, 'não é possível movimentar por este chamado'),
             (pendente.patrimonio, None, 'movimentação pendente'),
             (fora_da_ti.patrimonio, criar_solicitante(setor=self.setor).pk, 'precisa estar disponível na TI'),
             (da_ti.patrimonio, de_fora_do_setor.pk, 'funcionário lotado em'),
@@ -103,6 +103,26 @@ class MovimentacaoViaChamadoTests(TestCase):
         self.assertTrue(self.c.get(url, {'patrimonio': ativo.patrimonio}).json()['ok'])
         self.assertFalse(self.c.get(url, {'patrimonio': '999999'}).json()['ok'])
 
+    def test_pendente_em_outro_chamado_mostra_o_codigo_e_link(self):
+        url = reverse('chamados:verificar_ativo', args=[self.chamado.pk])
+        outro = criar_chamado()
+        ativo = criar_ativo(setor=setor_ti())
+        MovimentacaoAtivo.objects.create(ativo=ativo, chamado=outro, setor_destino=outro.setor, realizado_por=criar_tecnico())
+
+        dados = self.c.get(url, {'patrimonio': ativo.patrimonio}).json()
+        self.assertFalse(dados['ok'])
+        self.assertIn(f'no chamado {outro.codigo}', dados['mensagem'])
+        self.assertEqual(dados['link']['url'], reverse('chamados:detail', args=[outro.pk]))
+
+    def test_pendente_neste_chamado_nao_tem_link(self):
+        url = reverse('chamados:verificar_ativo', args=[self.chamado.pk])
+        ativo = criar_ativo(setor=setor_ti())
+        self.registrar(ativo)
+
+        dados = self.c.get(url, {'patrimonio': ativo.patrimonio}).json()
+        self.assertIn('neste chamado', dados['mensagem'])
+        self.assertNotIn('link', dados)
+
     def test_registro_fica_pendente_ate_fechar_o_chamado(self):
         ativo = criar_ativo(setor=setor_ti())
         self.registrar(ativo)
@@ -112,7 +132,7 @@ class MovimentacaoViaChamadoTests(TestCase):
         self.assertEqual(movimentacao.status, MovimentacaoAtivo.Status.PENDENTE)
         self.assertEqual(ativo.setor, setor_ti())  # nada muda antes do fechamento
 
-        self.c.post(reverse('chamados:fechar', args=[self.chamado.pk]))
+        self.c.post(reverse('chamados:fechar', args=[self.chamado.pk]), {'notas': 'Problema resolvido.'})
 
         movimentacao.refresh_from_db()
         ativo.refresh_from_db()
@@ -127,7 +147,7 @@ class MovimentacaoViaChamadoTests(TestCase):
         self.registrar(notebook, funcionario=pessoa.pk)
         self.registrar(celular)
 
-        self.c.post(reverse('chamados:fechar', args=[self.chamado.pk]))
+        self.c.post(reverse('chamados:fechar', args=[self.chamado.pk]), {'notas': 'Problema resolvido.'})
 
         notebook.refresh_from_db()
         celular.refresh_from_db()
@@ -139,7 +159,7 @@ class MovimentacaoViaChamadoTests(TestCase):
         self.registrar(ativo)
         Ativo.objects.filter(pk=ativo.pk).update(setor=self.setor)  # lotação mudou depois do registro
 
-        self.c.post(reverse('chamados:fechar', args=[self.chamado.pk]))
+        self.c.post(reverse('chamados:fechar', args=[self.chamado.pk]), {'notas': 'Problema resolvido.'})
 
         self.assertEqual(ativo.movimentacoes.get().setor_origem, self.setor)
 
@@ -158,7 +178,7 @@ class MovimentacaoMensagensTests(TestCase):
         )
 
         self.assertFalse(ativo.movimentacoes.exists())
-        self.assertTrue(any('não na TI nem em' in m for m in mensagens(resposta)))
+        self.assertTrue(any('não é possível movimentar por este chamado' in m for m in mensagens(resposta)))
 
     def test_ativo_sem_lotacao_e_recusado(self):
         ativo = criar_ativo(setor=None)

@@ -39,6 +39,31 @@ class ExpirarSessaoInativaMiddleware:
         return self.get_response(request)
 
 
+class PaginaDeErro405Middleware:
+    """As ações do sistema só aceitam POST; abri-las pelo endereço (link copiado, F5 depois do envio)
+    devolve um 405 em branco do Django. Aqui ele vira a página de erro do sistema (405.html), mantendo
+    o cabeçalho Allow. Respostas JSON e o admin do Django ficam como estão."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if (
+            response.status_code == 405
+            and not getattr(response, 'streaming', False)
+            and not response.content
+            and not request.path.startswith('/admin/')
+        ):
+            from django.shortcuts import render
+
+            pagina = render(request, '405.html', status=405)
+            if response.has_header('Allow'):
+                pagina['Allow'] = response['Allow']
+            return pagina
+        return response
+
+
 class ForcarTrocaSenhaMiddleware:
     """Redireciona usuários com `deve_trocar_senha=True` para a tela de troca
     de senha antes de liberar qualquer outra página do sistema."""

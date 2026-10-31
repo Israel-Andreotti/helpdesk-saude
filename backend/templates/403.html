@@ -1,6 +1,15 @@
 {% extends '_erro.html' %}
 {% block title %}Acesso negado{% endblock %}
+{% block tom %}hd-erro-perigo{% endblock %}
 {% block icone %}bi-shield-lock{% endblock %}
 {% block codigo %}403{% endblock %}
 {% block titulo %}Acesso negado{% endblock %}
-{% block explicacao %}Seu perfil não tem permissão para acessar esta página. Se precisar desse acesso, fale com o administrador do sistema.{% endblock %}
+{% block explicacao %}Seu perfil não tem permissão para acessar esta página.{% endblock %}
+{% block dica %}
+{% if user.is_authenticated %}
+<p class="small text-muted-hd mb-0">
+    Você está conectado como <strong>{{ user.get_full_name|default:user.username }}</strong>
+    ({{ user.get_perfil_display }}). Se precisar desse acesso, fale com o administrador do sistema.
+</p>
+{% endif %}
+{% endblock %}

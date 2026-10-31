@@ -1,0 +1,8 @@
+{% extends '_erro_isolado.html' %}
+{% comment %}Requisição inválida (ex.: endereço malformado, host não permitido): renderizado sem contexto.{% endcomment %}
+{% block title %}Requisição inválida{% endblock %}
+{% block cor %}#d97706, #fbbf24{% endblock %}
+{% block icone %}?{% endblock %}
+{% block codigo %}400{% endblock %}
+{% block titulo %}Não foi possível entender o pedido{% endblock %}
+{% block explicacao %}O endereço ou os dados enviados estão incompletos ou em formato inválido. Volte ao início e tente pelo menu do sistema.{% endblock %}

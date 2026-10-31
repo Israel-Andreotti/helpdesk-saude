@@ -170,7 +170,7 @@ class Simulador:
 
     def abrir_chamado(self):
         solicitante = self.rng.choice(self.solicitantes)
-        subcategoria = self.rng.choice(list(Subcategoria.objects.select_related('categoria')))
+        subcategoria = self.rng.choice(list(Subcategoria.objects.select_related('categoria').filter(pedido_usuario='')))
         descricao = self.rng.choice(DESCRICOES.get(subcategoria.nome) or [DESCRICAO_GENERICA.format(servico=subcategoria.nome.lower())])
         chamado = Chamado.objects.create(
             titulo=subcategoria.nome, descricao=descricao, solicitante=solicitante, setor=solicitante.setor,
@@ -287,12 +287,12 @@ class Simulador:
 
     def fechar(self, chamado):
         ProcedimentoEntry.objects.create(chamado=chamado, autor=chamado.atendente,
-                                         tipo=ProcedimentoEntry.Tipo.PUBLICO, texto=self.rng.choice(SOLUCOES))
+                                         tipo=ProcedimentoEntry.Tipo.ENCERRAMENTO, texto=self.rng.choice(SOLUCOES))
         chamado.resposta_solicitante_em = None  # o técnico fictício "viu" a resposta
         chamado.fechar()
         chamado.save()
         prazo = 'dentro do prazo de SLA' if chamado.fechado_no_prazo else 'fora do prazo de SLA'
-        chamado.registrar_evento(EventoChamado.Tipo.FECHADO, chamado.atendente, f'Fechou o chamado ({prazo}).')
+        chamado.registrar_evento(EventoChamado.Tipo.FECHADO, chamado.atendente, f'Encerrou o chamado ({prazo}).')
         self._registrar(chamado, 'fechado')
 
     def avaliar(self, chamado):

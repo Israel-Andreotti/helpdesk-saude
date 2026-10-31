@@ -68,6 +68,20 @@ class AtribuirChamadoTests(TestCase):
         self.assertIsNone(self.chamado.atendente)
         self.assertIn('Selecione um técnico válido para reatribuir o chamado.', mensagens(resposta))
 
+    def test_tecnico_desativado_nao_aparece_nem_recebe_chamado(self):
+        self.tecnico_b.is_active = False
+        self.tecnico_b.save()
+        detalhe = reverse('chamados:detail', args=[self.chamado.pk])
+
+        self.assertNotIn(self.tecnico_b, cliente(self.tecnico_a).get(detalhe).context['tecnicos'])
+        resposta = cliente(self.tecnico_a).post(
+            reverse('chamados:reatribuir', args=[self.chamado.pk]), {'atendente': self.tecnico_b.pk}, follow=True
+        )
+
+        self.chamado.refresh_from_db()
+        self.assertIsNone(self.chamado.atendente)
+        self.assertIn('Selecione um técnico válido para reatribuir o chamado.', mensagens(resposta))
+
 
 class AtribuirChamadoConcorrenciaTests(TransactionTestCase):
     """Condição de corrida: dois técnicos clicam "Atribuir a mim" ao mesmo tempo. Cada requisição roda

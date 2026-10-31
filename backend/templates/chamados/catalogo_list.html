@@ -7,13 +7,13 @@
 <div class="row justify-content-center mb-4">
     <div class="col-lg-8">
         <div class="hd-card p-0 table-responsive">
-            <table class="table hd-table align-middle mb-0">
+            <table class="table hd-table hd-lista hd-acoes-hover align-middle mb-0">
                 <thead>
                     <tr>
                         <th class="ps-3">Prioridade</th>
                         <th>O que engloba</th>
                         <th>Prazo de SLA</th>
-                        {% if user.perfil == 'administrador' %}<th class="pe-3 text-end">Ações</th>{% endif %}
+                        {% if user.perfil == 'administrador' %}<th class="pe-3"><span class="visually-hidden">Editar</span></th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
@@ -21,10 +21,10 @@
                     <tr>
                         <td class="ps-3"><span class="badge rounded-pill {{ sla.prioridade|prioridade_badge }}">{{ sla.get_prioridade_display }}</span></td>
                         <td class="small text-muted-hd">{{ sla.descricao }}</td>
-                        <td class="fw-semibold">{{ sla.horas }}h</td>
+                        <td class="fw-semibold text-nowrap">{{ sla.horas }}h</td>
                         {% if user.perfil == 'administrador' %}
                         <td class="pe-3 text-end">
-                            <a href="{% url 'chamados:sla_editar' sla.pk %}" class="btn btn-outline-primary btn-sm" title="Editar"><i class="bi bi-pencil"></i></a>
+                            <a href="{% url 'chamados:sla_editar' sla.pk %}" class="hd-acao-hover" title="Editar o prazo de {{ sla.get_prioridade_display|lower }}" aria-label="Editar o prazo de {{ sla.get_prioridade_display|lower }}"><i class="bi bi-pencil"></i></a>
                         </td>
                         {% endif %}
                     </tr>
@@ -42,7 +42,7 @@
     {# flex-md-nowrap: num container que quebra linha, o navegador dimensiona o grupo pelo maior item #}
     {# (só a busca) e o botão sempre caía para a linha de baixo. Sem quebra, a largura é a soma dos itens. #}
     <div class="d-flex flex-wrap flex-md-nowrap align-items-center gap-2">
-        <div class="hd-search" style="flex: 0 1 320px; min-width: min(260px, 100%);">
+        <div class="hd-search" style="flex: 0 0 340px; max-width: 100%;">
             <i class="bi bi-search hd-search-icon"></i>
             <input type="text" id="catalogoSearch" class="form-control" placeholder="Buscar um serviço pelo nome...">
         </div>
@@ -52,34 +52,47 @@
     </div>
 </div>
 
-<div id="catalogoCategorias">
+{# Categorias lado a lado em telas grandes; a busca esconde a coluna inteira de cada categoria. #}
+<div id="catalogoCategorias" class="row g-3">
     {% for categoria in categorias %}
-    <div class="hd-card mb-3 hd-catalogo-categoria" data-nome-categoria="{{ categoria.nome|lower }}">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 hd-catalogo-categoria-header">
-            <h3 class="h6 m-0">{{ categoria.nome }}</h3>
-            {% if user.perfil == 'administrador' %}
-            <a href="{% url 'chamados:categoria_editar' categoria.pk %}" class="btn btn-outline-primary btn-sm" title="Editar categoria e subcategorias"><i class="bi bi-pencil"></i> Editar</a>
+    <div class="col-lg-6 hd-catalogo-categoria" data-nome-categoria="{{ categoria.nome|lower }}">
+        <div class="hd-card h-100">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 hd-catalogo-categoria-header">
+                <h3 class="h6 m-0">{{ categoria.nome }}</h3>
+                {% if user.perfil == 'administrador' %}
+                <a href="{% url 'chamados:categoria_editar' categoria.pk %}" class="hd-acao-categoria" title="Editar categoria (nome e subcategorias)" aria-label="Editar categoria {{ categoria.nome }}"><i class="bi bi-gear"></i></a>
+                {% endif %}
+            </div>
+            {% if categoria.subcategorias.all %}
+            {# Três colunas para alinhar tipo e prioridade entre as linhas. #}
+            <table class="table table-sm align-middle mb-0 hd-lista hd-catalogo-tabela">
+                <thead>
+                    <tr>
+                        <th>Subcategoria</th>
+                        <th>Tipo</th>
+                        <th>Prioridade</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sub in categoria.subcategorias.all %}
+                    <tr class="hd-catalogo-subcategoria" data-nome-sub="{{ sub.nome|lower }}">
+                        <td>{{ sub.nome }}</td>
+                        <td class="text-nowrap">{% tipo_badge sub.tipo %}</td>
+                        <td class="text-nowrap"><span class="badge rounded-pill {{ sub.prioridade|prioridade_badge }}">{{ sub.get_prioridade_display }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="text-muted-hd small mb-0">Nenhuma subcategoria cadastrada.</p>
             {% endif %}
         </div>
-        {% if categoria.subcategorias.all %}
-        <ul class="list-unstyled mb-0">
-            {% for sub in categoria.subcategorias.all %}
-            <li class="d-flex flex-wrap align-items-center gap-2 py-1 hd-catalogo-subcategoria{% if not forloop.last %} border-bottom{% endif %}" data-nome-sub="{{ sub.nome|lower }}">
-                <span class="flex-grow-1">{{ sub.nome }}</span>
-                {% tipo_badge sub.tipo %}
-                <span class="badge rounded-pill {{ sub.prioridade|prioridade_badge }}">{{ sub.get_prioridade_display }}</span>
-            </li>
-            {% endfor %}
-        </ul>
-        {% else %}
-        <p class="text-muted-hd small mb-0">Nenhuma subcategoria cadastrada.</p>
-        {% endif %}
     </div>
     {% empty %}
     <p class="text-muted-hd">Nenhuma categoria cadastrada.</p>
     {% endfor %}
-    <p id="catalogoSemResultado" class="text-muted-hd text-center py-4 d-none">Nenhum serviço encontrado.</p>
 </div>
+<p id="catalogoSemResultado" class="text-muted-hd text-center py-4 d-none">Nenhum serviço encontrado.</p>
 
 <script>
 (function () {

@@ -30,12 +30,18 @@ def prioridade_badge(prioridade):
 @register.simple_tag
 def chamados_aguardando_resposta(usuario):
     """Quantos chamados do solicitante precisam de uma ação dele (badge do menu): responder um
-    chamado pausado aguardando a sua informação."""
+    chamado pausado aguardando a sua informação, ou avaliar/reabrir um chamado recém-fechado."""
     from chamados.models import Chamado
 
     if not getattr(usuario, 'is_authenticated', False) or not usuario.is_solicitante():
         return 0
-    return Chamado.objects.filter(solicitante=usuario, status=Chamado.Status.AGUARDANDO_SOLICITANTE).count()
+    aguardando = Chamado.objects.filter(solicitante=usuario, status=Chamado.Status.AGUARDANDO_SOLICITANTE).count()
+    from chamados.models import SolicitacaoUsuario
+
+    return (
+        aguardando + Chamado.fechados_para_avaliar(usuario).count()
+        + SolicitacaoUsuario.links_prontos(usuario).count()
+    )
 
 
 @register.simple_tag
@@ -78,3 +84,22 @@ def tipo_badge(tipo, rotulo=None):
     """Selo "Incidente"/"Requisição" (ícone + texto, nunca só cor)."""
     return {'tipo': tipo, 'rotulo': rotulo}
 
+
+
+@register.filter
+def sla_distancia(chamado):
+    """Distância até o prazo do SLA em texto curto ("2h 15min", "3d 4h", "12min"), para a fila.
+    Só formata: se o prazo já passou, é o tempo desde o estouro."""
+    from django.utils import timezone
+
+    if not chamado.prazo_sla:
+        return ''
+    referencia = chamado.sla_pausado_em or timezone.now()
+    minutos = int(abs((chamado.prazo_sla - referencia).total_seconds()) // 60)
+    dias, resto = divmod(minutos, 24 * 60)
+    horas, minutos = divmod(resto, 60)
+    if dias:
+        return f'{dias}d {horas}h' if horas else f'{dias}d'
+    if horas:
+        return f'{horas}h {minutos}min' if minutos else f'{horas}h'
+    return f'{minutos}min'

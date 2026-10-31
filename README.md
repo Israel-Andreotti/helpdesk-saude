@@ -22,18 +22,29 @@ nem frontend separado.
 - Fila da equipe com filtros, busca, seis ordenações (urgência, % do SLA consumido, prioridade...)
   e **atualização automática** quando chega algo novo. "Atribuir a mim" é seguro contra dois
   técnicos clicando ao mesmo tempo.
+- **Pedido de novo usuário por chamado**: só gestores (solicitantes VIP) pedem, informando os dados do
+  funcionário; a TI cria o usuário a partir do chamado e o gestor recebe um **link de ativação** de uso
+  único (48h) para o funcionário criar a própria senha — ninguém vê senha. A **exclusão de usuário**
+  também é só de gestores (com nome completo e matrícula); a **alteração de usuário** qualquer um pede.
+- Cada técnico escolhe as **colunas da fila** (mostrar/ocultar e arrastar para reordenar); a escolha
+  fica salva no usuário.
 - Fluxo: aberto → em andamento → (aguardando solicitante) → fechado. Depois de fechado, o
   solicitante pode **reabrir** em até 1 dia e **avaliar** o atendimento (1 a 5 estrelas).
 - Linha do tempo com procedimentos públicos, notas internas (só a equipe vê) e o **log de eventos**
   de todo o ciclo de vida (quem fez o quê e quando).
 - Notificações dentro do sistema: aviso ao solicitante quando precisam dele e avisos ao técnico
   quando o solicitante responde.
+- **Histórico** de chamados fechados com busca e filtros (período de fechamento, tipo, prioridade,
+  categoria, setor e técnico).
 
 **Ativos**
 - Cadastro com número de patrimônio automático; cada ativo fica em um setor **ou** com um funcionário.
+- Marca e modelo padronizados (listas pesquisáveis com cascata marca → modelo); só administradores
+  cadastram marcas/modelos novos.
 - Movimentação pelo chamado (entrega e devolução), validada ao vivo e efetivada só quando o chamado
   é fechado.
 - **Trilha de auditoria** completa de toda mudança de lotação (origem, destino, quem e quando).
+- Busca de ativos por marca/modelo/patrimônio, tipo, situação, setor e funcionário.
 
 **Indicadores** (`/indicadores/`)
 - **Visão executiva** (administrador): volume, nível de serviço, tempo até a primeira resposta,

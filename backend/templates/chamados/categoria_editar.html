@@ -1,5 +1,26 @@
 {% extends 'base.html' %}
-{% block title %}Editar categoria{% endblock %}
+{% block title %}Editar categoria
+<script>
+// Nomes das subcategorias: salva quando o valor muda (ao sair do campo ou Enter); Esc restaura o original.
+document.querySelectorAll('.hd-input-discreto[data-original]').forEach(function (campo) {
+    campo.addEventListener('change', function () {
+        var nome = campo.value.trim();
+        if (!nome || nome === campo.dataset.original) { campo.value = campo.dataset.original; return; }
+        campo.form.submit();
+    });
+    campo.addEventListener('keydown', function (evento) {
+        if (evento.key === 'Escape') { campo.value = campo.dataset.original; campo.blur(); }
+    });
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+    if (!window.bootstrap) return;
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+        bootstrap.Tooltip.getOrCreateInstance(el);
+    });
+});
+</script>
+{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-7">
@@ -11,19 +32,28 @@
             <form method="post">
                 {% csrf_token %}
                 <label class="form-label" for="{{ form.nome.id_for_label }}">{{ form.nome.label }}</label>
-                {{ form.nome }}
+                <div class="input-group">
+                    {{ form.nome }}
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle"></i> Salvar nome</button>
+                </div>
                 {% if form.nome.errors %}<div class="text-danger small">{{ form.nome.errors }}</div>{% endif %}
-                <button type="submit" class="btn btn-primary mt-3"><i class="bi bi-check-circle"></i> Salvar</button>
             </form>
         </div>
 
         <div class="hd-card mb-4">
-            <h2 class="h6 text-uppercase text-muted-hd mb-3">Subcategorias</h2>
+            <h2 class="h6 text-uppercase text-muted-hd mb-1">Subcategorias</h2>
+            <p class="small text-muted-hd mb-3"><i class="bi bi-lightning-charge"></i> Alterações nas subcategorias são salvas automaticamente.</p>
             {% if subcategorias %}
             <ul class="list-unstyled mb-3">
                 {% for sub in subcategorias %}
                 <li class="d-flex flex-wrap align-items-center gap-2 py-2{% if not forloop.last %} border-bottom{% endif %}">
-                    <span class="flex-grow-1">{{ sub.nome }}</span>
+                    {# Nome editável: salva ao sair do campo ou com Enter; Esc desfaz. #}
+                    <form method="post" action="{% url 'chamados:subcategoria_renomear' sub.pk %}" class="m-0 flex-grow-1">
+                        {% csrf_token %}
+                        <input type="text" name="nome" value="{{ sub.nome }}" maxlength="100" required
+                               class="form-control form-control-sm hd-input-discreto" aria-label="Nome da subcategoria {{ sub.nome }}"
+                               data-original="{{ sub.nome }}" title="Clique para corrigir o nome">
+                    </form>
                     <form method="post" action="{% url 'chamados:subcategoria_tipo' sub.pk %}" class="m-0">
                         {% csrf_token %}
                         <select name="tipo" class="form-select form-select-sm" style="width: auto;"
@@ -43,9 +73,11 @@
                         </select>
                     </form>
                     <form method="post" action="{% url 'chamados:subcategoria_excluir' sub.pk %}" class="m-0"
-                          onsubmit="return confirm('Excluir a subcategoria \'{{ sub.nome }}\'? Só é possível se não houver chamados vinculados.');">
+                          data-confirmar-titulo="Excluir subcategoria" data-confirmar-botao="Excluir"
+                          data-confirmar="Excluir a subcategoria {{ sub.nome }}?"
+                          data-confirmar-detalhe="Só é possível se não houver chamados vinculados a ela.">
                         {% csrf_token %}
-                        <button type="submit" class="btn btn-outline-danger btn-sm" title="Excluir subcategoria"><i class="bi bi-trash"></i></button>
+                        <button type="submit" class="btn btn-sm hd-btn-ghost-perigo" title="Excluir subcategoria" aria-label="Excluir {{ sub.nome }}"><i class="bi bi-trash"></i></button>
                     </form>
                 </li>
                 {% endfor %}
@@ -62,11 +94,15 @@
                         {{ subcategoria_form.nome }}
                     </div>
                     <div class="col-sm-2">
-                        <label class="form-label" for="{{ subcategoria_form.tipo.id_for_label }}">{{ subcategoria_form.tipo.label }}</label>
+                        <label class="form-label" for="{{ subcategoria_form.tipo.id_for_label }}">{{ subcategoria_form.tipo.label }}
+                            <i class="bi bi-info-circle ms-1 text-muted-hd" tabindex="0" role="img" aria-label="Sobre o tipo"
+                               data-bs-toggle="tooltip" data-bs-title="Incidente: algo parou ou não funciona como deveria. Requisição: pedido de algo padrão (acesso, instalação, material)."></i></label>
                         {{ subcategoria_form.tipo }}
                     </div>
                     <div class="col-sm-2">
-                        <label class="form-label" for="{{ subcategoria_form.prioridade.id_for_label }}">{{ subcategoria_form.prioridade.label }}</label>
+                        <label class="form-label text-nowrap" for="{{ subcategoria_form.prioridade.id_for_label }}">{{ subcategoria_form.prioridade.label }}
+                            <i class="bi bi-info-circle ms-1 text-muted-hd" tabindex="0" role="img" aria-label="Sobre a prioridade padrão"
+                               data-bs-toggle="tooltip" data-bs-title="Define a prioridade (e o SLA) dos chamados abertos nesta subcategoria. Alterar vale para os próximos chamados; os já abertos não mudam."></i></label>
                         {{ subcategoria_form.prioridade }}
                     </div>
                     <div class="col-sm-3">
@@ -75,9 +111,29 @@
                 </div>
                 {% for erro in subcategoria_form.nome.errors %}<div class="text-danger small mt-1">{{ erro }}</div>{% endfor %}
                 {% for erro in subcategoria_form.prioridade.errors %}<div class="text-danger small mt-1">{{ erro }}</div>{% endfor %}
-                <div class="form-text"><strong>Incidente</strong>: algo parou ou não funciona como deveria; <strong>requisição</strong>: pedido de algo padrão (acesso, instalação, material). A prioridade padrão define a prioridade (e o SLA) dos chamados abertos nessa subcategoria. Alterar a prioridade vale para os próximos chamados; os já abertos não mudam.</div>
             </form>
         </div>
     </div>
 </div>
+
+<script>
+// Nomes das subcategorias: salva quando o valor muda (ao sair do campo ou Enter); Esc restaura o original.
+document.querySelectorAll('.hd-input-discreto[data-original]').forEach(function (campo) {
+    campo.addEventListener('change', function () {
+        var nome = campo.value.trim();
+        if (!nome || nome === campo.dataset.original) { campo.value = campo.dataset.original; return; }
+        campo.form.submit();
+    });
+    campo.addEventListener('keydown', function (evento) {
+        if (evento.key === 'Escape') { campo.value = campo.dataset.original; campo.blur(); }
+    });
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+    if (!window.bootstrap) return;
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+        bootstrap.Tooltip.getOrCreateInstance(el);
+    });
+});
+</script>
 {% endblock %}

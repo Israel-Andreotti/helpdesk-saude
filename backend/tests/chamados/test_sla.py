@@ -147,7 +147,7 @@ class AndamentoDoSLATests(TestCase):
             self.chamado.save()
             resposta = cliente(criar_tecnico()).get(reverse('chamados:list'))
 
-        self.assertContains(resposta, 'title="O prazo estourou antes da pausa">estourado</span>')
+        self.assertContains(resposta, 'Pausado · <span class="sla-critico">estourado</span>')
 
     def test_retomar_estende_o_prazo_pelo_tempo_pausado(self):
         prazo_original = self.chamado.prazo_sla

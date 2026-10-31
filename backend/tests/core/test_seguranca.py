@@ -5,7 +5,7 @@ import time
 from unittest import mock
 
 from django.template.loader import get_template
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from tests.fabricas import SENHA, cliente, criar_solicitante, criar_tecnico, mensagens
@@ -106,7 +106,7 @@ class PaginasDeErroTests(TestCase):
 
         self.assertEqual(resposta.status_code, 404)
         self.assertTemplateUsed(resposta, '404.html')
-        self.assertContains(resposta, 'Voltar aos chamados', status_code=404)
+        self.assertContains(resposta, 'Ir para o início', status_code=404)
 
     def test_404_anonimo_aponta_para_o_login(self):
         self.assertContains(cliente().get('/nao-existe/'), 'Ir para o login', status_code=404)
@@ -121,3 +121,31 @@ class PaginasDeErroTests(TestCase):
         html = get_template('500.html').render()
 
         self.assertIn('Algo deu errado no servidor', html)
+
+    def test_400_renderiza_sem_contexto(self):
+        self.assertIn('Não foi possível entender o pedido', get_template('400.html').render())
+
+    def test_formulario_sem_csrf_mostra_a_pagina_do_sistema(self):
+        c = Client(enforce_csrf_checks=True)
+        c.force_login(criar_solicitante())
+
+        with self.assertLogs('django.security.csrf', 'WARNING'):
+            resposta = c.post(reverse('chamados:create'), {})
+
+        self.assertEqual(resposta.status_code, 403)
+        self.assertTemplateUsed(resposta, '403_csrf.html')
+        self.assertContains(resposta, 'O formulário expirou', status_code=403)
+
+    def test_acao_aberta_pelo_endereco_mostra_405_do_sistema(self):
+        resposta = cliente(criar_tecnico()).get(reverse('chamados:colunas_fila'))
+
+        self.assertEqual(resposta.status_code, 405)
+        self.assertTemplateUsed(resposta, '405.html')
+        self.assertIn('POST', resposta['Allow'])
+
+    def test_previsualizacao_so_com_debug(self):
+        usuario = criar_solicitante()
+        self.assertEqual(cliente(usuario).get(reverse('core:ver_erro', args=[403])).status_code, 404)
+        with override_settings(DEBUG=True), self.assertLogs('django.request', 'ERROR'):
+            resposta = cliente(usuario).get(reverse('core:ver_erro', args=[500]))
+        self.assertContains(resposta, 'Algo deu errado no servidor', status_code=500)

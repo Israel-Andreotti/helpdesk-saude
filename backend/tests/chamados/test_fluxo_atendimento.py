@@ -138,9 +138,9 @@ class LogDeEventosTests(TestCase):
         cliente(tecnico).post(url('pegar'))
         cliente(tecnico).post(url('aguardar_solicitante'), {'texto': 'Qual o erro?'})
         cliente(solicitante).post(url('responder'), {'texto': 'Erro 809'})
-        cliente(tecnico).post(url('fechar'))
+        cliente(tecnico).post(url('fechar'), {'notas': 'Resolvido.'})
         cliente(solicitante).post(url('reabrir'), {'texto': 'Voltou'})
-        cliente(tecnico).post(url('fechar'))
+        cliente(tecnico).post(url('fechar'), {'notas': 'Resolvido.'})
         cliente(solicitante).post(url('avaliar'), {'avaliacao': '4'})
 
         T = EventoChamado.Tipo

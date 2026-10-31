@@ -1,51 +1,88 @@
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import ProtectedError, Q
+from django.db.models import F, ProtectedError, Q
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views.generic import CreateView, DetailView, ListView, UpdateView, View
 
-from core.mixins import AdministradorRequiredMixin, AtendenteRequiredMixin
+from core.mixins import AdministradorRequiredMixin, AtendenteRequiredMixin, BuscaObrigatoriaMixin
 from usuarios.models import Setor
 
 from .forms import AtivoCadastroForm, AtivoEditarForm
-from .models import Ativo, MovimentacaoAtivo
+from .models import Ativo, Modelo, MovimentacaoAtivo
 
 
-class AtivoListView(AtendenteRequiredMixin, ListView):
-    model = Ativo
+class AtivoListView(AtendenteRequiredMixin, BuscaObrigatoriaMixin, ListView):
     template_name = 'ativos/ativo_list.html'
     context_object_name = 'ativos'
     paginate_by = 25
+    queryset = Ativo.objects.select_related('modelo__marca', 'setor', 'funcionario')
+    MARCA_MODELO = ('modelo__marca__nome', 'modelo__nome', 'patrimonio')
+    ordenacoes = {
+        'marca': ('Marca e modelo', MARCA_MODELO),
+        'patrimonio': ('Patrimônio', ('patrimonio',)),
+        'tipo': ('Tipo', ('tipo',) + MARCA_MODELO),
+        'status': ('Situação', ('status',) + MARCA_MODELO),
+        'lotacao': ('Lotação', (
+            F('setor__nome').asc(nulls_last=True), 'funcionario__first_name', 'funcionario__last_name',
+        ) + MARCA_MODELO),
+        'recentes': ('Cadastro mais recente', ('-criado_em',)),
+    }
+    ordem_padrao = 'marca'
 
-    def get_queryset(self):
-        qs = Ativo.objects.select_related('setor', 'funcionario').order_by('marca', 'modelo')
-        termo = self.request.GET.get('q', '').strip()
+    def filtrar(self, qs):
+        termo = self.filtro('q')
         if termo:
             qs = qs.filter(
-                Q(marca__icontains=termo) | Q(modelo__icontains=termo) | Q(patrimonio__icontains=termo)
+                Q(modelo__marca__nome__icontains=termo) | Q(modelo__nome__icontains=termo) | Q(patrimonio__icontains=termo)
             )
-        status = self.request.GET.get('status', '').strip()
-        if status:
-            qs = qs.filter(status=status)
-        tipo = self.request.GET.get('tipo', '').strip()
-        if tipo:
-            qs = qs.filter(tipo=tipo)
+        if self.filtro('tipo') in Ativo.Tipo.values:
+            qs = qs.filter(tipo=self.filtro('tipo'))
+        if self.filtro('status') in Ativo.Status.values:
+            qs = qs.filter(status=self.filtro('status'))
+        setor = self.filtro_id('setor')
+        if setor:
+            qs = qs.filter(setor_id=setor)
+        funcionario = self.filtro('funcionario')
+        if funcionario:
+            qs = qs.filter(
+                Q(funcionario__first_name__icontains=funcionario)
+                | Q(funcionario__last_name__icontains=funcionario)
+                | Q(funcionario__username__icontains=funcionario)
+                | Q(funcionario__matricula__icontains=funcionario)
+            )
         return qs
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['q'] = self.request.GET.get('q', '')
-        context['status_selecionado'] = self.request.GET.get('status', '')
-        context['tipo_selecionado'] = self.request.GET.get('tipo', '')
         context['status_choices'] = Ativo.Status.choices
         context['tipo_choices'] = Ativo.Tipo.choices
+        context['setores'] = Setor.objects.order_by('nome')
         return context
 
 
-class AtivoCadastroView(AtendenteRequiredMixin, CreateView):
+class MarcaModeloViewMixin:
+    """Formulário com marca/modelo: só administradores cadastram marca ou modelo novos; o template
+    recebe os modelos de cada marca para a cascata Marca → Modelo."""
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['pode_criar'] = self.request.user.is_administrador()
+        return kwargs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        modelos_por_marca = {}
+        for modelo in Modelo.objects.all():
+            modelos_por_marca.setdefault(str(modelo.marca_id), []).append({'value': str(modelo.pk), 'text': modelo.nome})
+        context['modelos_por_marca'] = modelos_por_marca
+        context['pode_criar_marca_modelo'] = self.request.user.is_administrador()
+        return context
+
+
+class AtivoCadastroView(AtendenteRequiredMixin, MarcaModeloViewMixin, CreateView):
     model = Ativo
     form_class = AtivoCadastroForm
     template_name = 'ativos/ativo_form.html'
@@ -60,7 +97,7 @@ class AtivoCadastroView(AtendenteRequiredMixin, CreateView):
         return response
 
 
-class AtivoEditarView(AtendenteRequiredMixin, UpdateView):
+class AtivoEditarView(AtendenteRequiredMixin, MarcaModeloViewMixin, UpdateView):
     model = Ativo
     form_class = AtivoEditarForm
     template_name = 'ativos/ativo_form.html'

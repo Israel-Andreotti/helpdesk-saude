@@ -19,7 +19,7 @@ class FechamentoEReaberturaTests(TestCase):
         cliente(self.tecnico).post(reverse('chamados:pegar', args=[self.chamado.pk]))
 
     def fechar(self):
-        return cliente(self.tecnico).post(reverse('chamados:fechar', args=[self.chamado.pk]), follow=True)
+        return cliente(self.tecnico).post(reverse('chamados:fechar', args=[self.chamado.pk]), {'notas': 'Problema resolvido.'}, follow=True)
 
     def reabrir(self, texto='Continua sem acesso.', usuario=None):
         return cliente(usuario or self.solicitante).post(
@@ -42,6 +42,24 @@ class FechamentoEReaberturaTests(TestCase):
         self.assertTrue(self.chamado.sla_pausado)
         self.assertIsNotNone(self.chamado.primeira_resposta_em)  # fechar também é responder
         self.assertTrue(self.chamado.eventos.filter(tipo=EventoChamado.Tipo.FECHADO).exists())
+
+    def test_encerrar_exige_anotacoes_publicas(self):
+        resposta = cliente(self.tecnico).post(
+            reverse('chamados:fechar', args=[self.chamado.pk]), {'notas': '   '}, follow=True
+        )
+        self.chamado.refresh_from_db()
+        self.assertNotEqual(self.chamado.status, Chamado.Status.FECHADO)
+        self.assertTrue(any('anotações de encerramento' in m for m in mensagens(resposta)))
+
+        cliente(self.tecnico).post(
+            reverse('chamados:fechar', args=[self.chamado.pk]), {'notas': 'Driver reinstalado.'}
+        )
+        notas = self.chamado.procedimentos.get(tipo=ProcedimentoEntry.Tipo.ENCERRAMENTO)
+        self.assertEqual((notas.texto, notas.autor), ('Driver reinstalado.', self.tecnico))
+        # Públicas: o solicitante vê na linha do tempo.
+        detalhe = cliente(self.solicitante).get(reverse('chamados:detail', args=[self.chamado.pk]))
+        self.assertContains(detalhe, 'Driver reinstalado.')
+        self.assertContains(detalhe, 'Anotações de encerramento')
 
     def test_fechar_fora_do_prazo_registra_sla_estourado(self):
         Chamado.objects.filter(pk=self.chamado.pk).update(prazo_sla=timezone.now() - timedelta(hours=1))
@@ -139,3 +157,44 @@ class FechamentoEReaberturaTests(TestCase):
         self.chamado.refresh_from_db()
         self.assertEqual(self.chamado.status, Chamado.Status.FECHADO)
         self.assertIn('Este chamado já foi fechado e não pode mais ser alterado.', mensagens(resposta))
+
+
+class AvisoDeChamadoFechadoTests(TestCase):
+    """Ao fechar, o solicitante é avisado (menu, aviso e pop-up de "Meus chamados") para avaliar o
+    atendimento ou reabrir; o aviso some ao avaliar, ao reabrir ou quando acaba o prazo de reabertura."""
+
+    def setUp(self):
+        self.tecnico = criar_tecnico()
+        self.chamado = criar_chamado()
+        self.solicitante = self.chamado.solicitante
+        cliente(self.tecnico).post(reverse('chamados:pegar', args=[self.chamado.pk]))
+        cliente(self.tecnico).post(reverse('chamados:fechar', args=[self.chamado.pk]), {'notas': 'Problema resolvido.'})
+
+    def meus_chamados(self):
+        return cliente(self.solicitante).get(reverse('chamados:list'))
+
+    def test_solicitante_e_avisado_depois_do_fechamento(self):
+        from core.templatetags.chamado_extras import chamados_aguardando_resposta
+
+        resposta = self.meus_chamados()
+
+        self.assertEqual([c.pk for c in resposta.context['fechados_para_avaliar']], [self.chamado.pk])
+        self.assertContains(resposta, f'Avaliar {self.chamado.codigo}')
+        self.assertEqual(chamados_aguardando_resposta(self.solicitante), 1)
+
+    def test_aviso_some_ao_avaliar(self):
+        cliente(self.solicitante).post(reverse('chamados:avaliar', args=[self.chamado.pk]), {'avaliacao': '5'})
+
+        self.assertEqual(self.meus_chamados().context['fechados_para_avaliar'], [])
+
+    def test_aviso_some_ao_reabrir(self):
+        cliente(self.solicitante).post(reverse('chamados:reabrir', args=[self.chamado.pk]), {'texto': 'Voltou o erro.'})
+
+        self.assertEqual(self.meus_chamados().context['fechados_para_avaliar'], [])
+
+    def test_aviso_some_depois_do_prazo_de_reabertura(self):
+        Chamado.objects.filter(pk=self.chamado.pk).update(
+            fechado_em=timezone.now() - timedelta(days=Chamado.DIAS_REABERTURA, minutes=1)
+        )
+
+        self.assertEqual(self.meus_chamados().context['fechados_para_avaliar'], [])

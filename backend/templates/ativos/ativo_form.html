@@ -1,5 +1,9 @@
 {% extends 'base.html' %}
 {% block title %}{% if object %}Editar ativo{% else %}Cadastrar ativo{% endif %}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css">
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js" defer></script>
+{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-5">
@@ -39,7 +43,12 @@
                         </div>
                     </div>
                     {% endif %}
+                    {% if field.name == 'marca' or field.name == 'modelo' %}
+                    {# data-valor: mantém a escolha (inclusive "novo:...") quando o formulário volta com erro. #}
+                    <div data-valor="{{ field.value|default_if_none:'' }}">{{ field }}</div>
+                    {% else %}
                     {{ field }}
+                    {% endif %}
                     {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
                     {% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}
                 </div>
@@ -52,4 +61,65 @@
         </div>
     </div>
 </div>
+{{ modelos_por_marca|json_script:"modelosPorMarca" }}
+<script>
+// Marca e Modelo: selects pesquisáveis (Tom Select) com cascata — o Modelo só lista os modelos da
+// marca escolhida. Administradores podem cadastrar uma marca/modelo novo digitando o nome (vai como
+// "novo:<nome>"; o servidor reaproveita se já existir). Técnicos só escolhem da lista.
+document.addEventListener('DOMContentLoaded', function () {
+    var selMarca = document.querySelector('[data-select-marca]');
+    var selModelo = document.querySelector('[data-select-modelo]');
+    if (!selMarca || !selModelo || !window.TomSelect) return;
+    var modelosPorMarca = JSON.parse(document.getElementById('modelosPorMarca').textContent);
+    var podeCriar = {{ pode_criar_marca_modelo|yesno:"true,false" }};
+    var NOVO = 'novo:';
+
+    function opcoes(rotulo, textoCriar) {
+        return {
+            maxOptions: null,
+            allowEmptyOption: false,
+            create: podeCriar ? function (texto) { return { value: NOVO + texto.trim(), text: texto.trim() }; } : false,
+            createFilter: function (texto) { return texto.trim().length > 0 && texto.trim().length <= 100; },
+            render: {
+                option_create: function (dados, escape) {
+                    return '<div class="create">' + textoCriar + ' <strong>' + escape(dados.input) + '</strong></div>';
+                },
+                no_results: function () {
+                    return '<div class="no-results">Nenhum' + (rotulo === 'marca' ? 'a marca encontrada' : ' modelo encontrado')
+                        + (podeCriar ? '' : '. Peça a um administrador para cadastrar.') + '</div>';
+                }
+            }
+        };
+    }
+
+    function valorInicial(select) {
+        return select.parentElement.dataset.valor || '';
+    }
+
+    var tsMarca = new TomSelect(selMarca, opcoes('marca', 'Cadastrar marca'));
+    var tsModelo = new TomSelect(selModelo, opcoes('modelo', 'Cadastrar modelo'));
+
+    // Reaplica a escolha anterior (ex.: formulário devolvido com erro), inclusive itens novos.
+    function restaurar(ts, valor) {
+        if (!valor) return;
+        if (valor.indexOf(NOVO) === 0 && !ts.options[valor]) ts.addOption({ value: valor, text: valor.slice(NOVO.length) });
+        ts.setValue(valor, true);
+    }
+
+    function carregarModelos(valorDesejado) {
+        var marca = tsMarca.getValue();
+        tsModelo.clear(true);
+        tsModelo.clearOptions();
+        (modelosPorMarca[marca] || []).forEach(function (opcao) { tsModelo.addOption(opcao); });
+        if (marca) tsModelo.enable(); else tsModelo.disable();
+        tsModelo.control_input.placeholder = marca ? 'Selecione o modelo' : 'Escolha a marca primeiro';
+        if (valorDesejado && (tsModelo.options[valorDesejado] || valorDesejado.indexOf(NOVO) === 0)) restaurar(tsModelo, valorDesejado);
+    }
+
+    restaurar(tsMarca, valorInicial(selMarca));
+    carregarModelos(valorInicial(selModelo));
+    tsModelo.close();
+    tsMarca.on('change', function () { carregarModelos(''); });
+});
+</script>
 {% endblock %}

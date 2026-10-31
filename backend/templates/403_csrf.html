@@ -1,0 +1,9 @@
+{% extends '_erro.html' %}
+{% comment %}Falha de CSRF (core.views.falha_csrf): quase sempre um formulário aberto há muito tempo ou de outra sessão.{% endcomment %}
+{% block title %}Formulário expirado{% endblock %}
+{% block tom %}hd-erro-alerta{% endblock %}
+{% block icone %}bi-hourglass-bottom{% endblock %}
+{% block codigo %}403{% endblock %}
+{% block titulo %}O formulário expirou{% endblock %}
+{% block explicacao %}Por segurança, o envio foi recusado: a página ficou aberta por muito tempo ou sua sessão mudou (por exemplo, você saiu e entrou de novo em outra aba).{% endblock %}
+{% block dica %}<p class="small text-muted-hd mb-0">Volte, <strong>recarregue a página</strong> e envie de novo. O que você digitou pode precisar ser preenchido outra vez.</p>{% endblock %}

@@ -1,5 +1,26 @@
+import re
+
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+
+# Partículas de nomes em português que ficam minúsculas no meio do nome ("João da Silva").
+PARTICULAS_NOME = {'da', 'de', 'do', 'das', 'dos', 'e'}
+
+
+def padronizar_nome(texto, continuacao=False):
+    """Iniciais maiúsculas: "paulo   RICARDO da silva" → "Paulo Ricardo da Silva". Partículas (da, de,
+    do, das, dos, e) ficam minúsculas fora da 1ª palavra; nomes compostos com hífen ou apóstrofo
+    também ("Ana-Clara", "D'Ávila"). continuacao=True para o sobrenome, que segue o nome
+    ("da Silva" continua minúsculo no início). Usada no save() do usuário (e na migração 0011)."""
+    palavras = (texto or '').split()
+    resultado = []
+    for i, palavra in enumerate(palavras):
+        minuscula = palavra.lower()
+        if (i > 0 or continuacao) and minuscula in PARTICULAS_NOME:
+            resultado.append(minuscula)
+        else:
+            resultado.append(re.sub(r"(^|[-'’])(\w)", lambda m: m.group(1) + m.group(2).upper(), minuscula))
+    return ' '.join(resultado)
 
 
 class Setor(models.Model):
@@ -50,6 +71,12 @@ class Usuario(AbstractUser):
         verbose_name='Solicitante VIP',
         help_text='Chamados abertos por um solicitante VIP têm o prazo de SLA reduzido em 25%.',
     )
+    colunas_fila = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name='Colunas da fila',
+        help_text='Ordem e colunas ocultas da fila de chamados escolhidas pelo técnico (vazio = padrão).',
+    )
     super_admin = models.BooleanField(
         default=False,
         verbose_name='Superadministrador',
@@ -62,9 +89,6 @@ class Usuario(AbstractUser):
 
     def is_administrador(self):
         return self.perfil == self.Perfil.ADMINISTRADOR
-
-    def is_atendente(self):
-        return self.perfil == self.Perfil.ATENDENTE
 
     def is_solicitante(self):
         return self.perfil == self.Perfil.SOLICITANTE
@@ -81,6 +105,8 @@ class Usuario(AbstractUser):
         return str(proxima)
 
     def save(self, *args, **kwargs):
+        self.first_name = padronizar_nome(self.first_name)
+        self.last_name = padronizar_nome(self.last_name, continuacao=True)
         if not self.matricula:
             self.matricula = self._gerar_matricula()
         if self.super_admin:

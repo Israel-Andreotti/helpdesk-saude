@@ -15,12 +15,12 @@
         <div><div class="small text-muted-hd">Patrimônio</div><div class="fw-semibold">{{ ativo.patrimonio }}</div></div>
         <div><div class="small text-muted-hd">Tipo</div><div>{{ ativo.get_tipo_display }}</div></div>
         <div><div class="small text-muted-hd">Situação</div><div>{{ ativo.get_status_display }}</div></div>
-        <div><div class="small text-muted-hd">Lotação atual</div><div>{{ ativo.lotacao_display }}</div></div>
+        <div><div class="small text-muted-hd">Lotação atual</div><div>{% include 'ativos/_lotacao.html' %}</div></div>
     </div>
 </div>
 
 <div class="hd-card p-0 table-responsive">
-    <table class="table hd-table align-middle mb-0">
+    <table class="table hd-table hd-lista align-middle mb-0">
         <thead>
             <tr>
                 <th class="ps-3">Data/hora</th>

@@ -1,0 +1,9 @@
+{% extends '_erro.html' %}
+{% comment %}Ação acessada pelo endereço (GET) em vez do botão (POST): ver core.middleware.PaginaDeErro405Middleware.{% endcomment %}
+{% block title %}Ação não permitida{% endblock %}
+{% block tom %}hd-erro-alerta{% endblock %}
+{% block icone %}bi-hand-index{% endblock %}
+{% block codigo %}405{% endblock %}
+{% block titulo %}Esta ação só funciona pelo botão{% endblock %}
+{% block explicacao %}O endereço que você abriu executa uma ação (como encerrar um chamado ou excluir um registro) e não pode ser acessado diretamente nem recarregado.{% endblock %}
+{% block dica %}<p class="small text-muted-hd mb-0">Volte para a página anterior e use o botão correspondente.</p>{% endblock %}

@@ -114,6 +114,62 @@
     <p class="mb-0">{{ chamado.descricao|linebreaks }}</p>
 </div>
 
+{% if solicitacao_usuario %}
+{# Pedido de novo usuário: dados informados pelo gestor e o link de ativação para repassar. #}
+<div class="hd-card mb-4 border border-2 border-success-subtle">
+    <h2 class="h6 text-uppercase text-muted-hd mb-3"><i class="bi bi-person-plus"></i> Novo usuário</h2>
+    <div class="row g-2 small mb-3">
+        <div class="col-sm-6"><span class="text-muted-hd">Funcionário:</span> {{ solicitacao_usuario.nome_completo }}</div>
+        <div class="col-sm-6"><span class="text-muted-hd">E-mail:</span> {{ solicitacao_usuario.email }}</div>
+        <div class="col-sm-6"><span class="text-muted-hd">Setor:</span> {{ solicitacao_usuario.setor|default:'—' }}</div>
+        <div class="col-sm-6"><span class="text-muted-hd">Telefone:</span> {{ solicitacao_usuario.telefone|default:'—' }}</div>
+    </div>
+
+    {% if not solicitacao_usuario.usuario %}
+        {% if pode_editar %}
+        <a href="{% url 'usuarios:cadastrar' %}?chamado={{ chamado.pk }}" class="btn btn-success"><i class="bi bi-person-plus"></i> Criar usuário a partir deste chamado</a>
+        {% elif not pode_gerenciar %}
+        <p class="mb-0 text-muted-hd"><i class="bi bi-hourglass-split"></i> A TI vai criar o acesso. Quando estiver pronto, o link de ativação aparece aqui.</p>
+        {% endif %}
+    {% elif solicitacao_usuario.ativado_em %}
+        <p class="mb-0 text-success"><i class="bi bi-check-circle-fill"></i> Conta ativada em {{ solicitacao_usuario.ativado_em|date:'d/m/Y H:i' }} — login <strong>{{ solicitacao_usuario.usuario.username }}</strong>.</p>
+    {% elif link_ativacao %}
+        <label class="form-label small mb-1" for="linkAtivacao">Link de ativação de <strong>{{ solicitacao_usuario.first_name }}</strong> (login <strong>{{ solicitacao_usuario.usuario.username }}</strong>)</label>
+        <div class="input-group mb-2">
+            <input type="text" class="form-control" id="linkAtivacao" value="{{ link_ativacao }}" readonly>
+            <button type="button" class="btn btn-outline-primary" id="copiarLinkAtivacao"><i class="bi bi-clipboard"></i> Copiar</button>
+        </div>
+        <p class="small text-muted-hd mb-0">
+            Envie ao funcionário: ao abrir, ele cria a própria senha. Uso único, válido até
+            <strong>{{ solicitacao_usuario.link_valido_ate|date:'d/m/Y H:i' }}</strong>.
+        </p>
+    {% else %}
+        <p class="mb-2 text-danger"><i class="bi bi-exclamation-triangle-fill"></i> O link de ativação expirou em {{ solicitacao_usuario.link_valido_ate|date:'d/m/Y H:i' }} sem ser usado.</p>
+        {% if pode_editar %}
+        <form method="post" action="{% url 'chamados:novo_link_ativacao' chamado.pk %}" class="m-0">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-success btn-sm"><i class="bi bi-arrow-repeat"></i> Gerar novo link</button>
+        </form>
+        {% elif not pode_gerenciar %}
+        <p class="small text-muted-hd mb-0">Responda no chamado pedindo um novo link à TI.</p>
+        {% endif %}
+    {% endif %}
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var botao = document.getElementById('copiarLinkAtivacao');
+    var campo = document.getElementById('linkAtivacao');
+    if (!botao || !campo) return;
+    botao.addEventListener('click', function () {
+        campo.select();
+        var feito = function () { botao.innerHTML = '<i class="bi bi-check2"></i> Copiado'; setTimeout(function () { botao.innerHTML = '<i class="bi bi-clipboard"></i> Copiar'; }, 2000); };
+        if (navigator.clipboard) { navigator.clipboard.writeText(campo.value).then(feito, function () { document.execCommand('copy'); feito(); }); }
+        else { document.execCommand('copy'); feito(); }
+    });
+});
+</script>
+{% endif %}
+
 {% if pode_responder %}
 <div class="hd-card mb-4 border border-2 border-primary">
     <h2 class="h6 text-uppercase text-primary mb-2"><i class="bi bi-chat-left-dots-fill"></i> O técnico precisa de uma resposta sua</h2>
@@ -229,7 +285,7 @@ document.addEventListener('DOMContentLoaded', function () {
         {% else %}
         <li class="hd-timeline-item">
             <div class="hd-timeline-marker marker-{{ entrada.tipo }}">
-                {% if entrada.tipo == 'interno' %}<i class="bi bi-eye-slash"></i>{% elif entrada.tipo == 'resposta' %}<i class="bi bi-reply-fill"></i>{% else %}<i class="bi bi-check2-circle"></i>{% endif %}
+                {% if entrada.tipo == 'interno' %}<i class="bi bi-eye-slash"></i>{% elif entrada.tipo == 'resposta' %}<i class="bi bi-reply-fill"></i>{% elif entrada.tipo == 'encerramento' %}<i class="bi bi-flag-fill"></i>{% else %}<i class="bi bi-check2-circle"></i>{% endif %}
             </div>
             <div class="hd-timeline-content">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-1 mb-1">
@@ -237,6 +293,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     <span class="badge rounded-pill status-aguardando">Nota interna</span>
                     {% elif entrada.tipo == 'resposta' %}
                     <span class="badge rounded-pill badge-resposta">Resposta do solicitante</span>
+                    {% elif entrada.tipo == 'encerramento' %}
+                    <span class="badge rounded-pill badge-encerramento"><i class="bi bi-flag-fill"></i> Anotações de encerramento</span>
                     {% else %}
                     <span class="badge rounded-pill status-resolvido">Procedimento</span>
                     {% endif %}
@@ -293,29 +351,34 @@ document.addEventListener('DOMContentLoaded', function () {
     <div class="form-text mb-3">Efetivada automaticamente quando o chamado for fechado.</div>
     {% endif %}
 
-    <form method="post" action="{% url 'chamados:movimentar_ativo' chamado.pk %}" class="d-flex flex-wrap gap-2 align-items-end"
+    {# As regras de destino não ficam escritas na tela: a linha de feedback abaixo mostra, ao digitar, #}
+    {# o destino real (ou o motivo de não poder), vindo de chamados:verificar_ativo. #}
+    <form method="post" action="{% url 'chamados:movimentar_ativo' chamado.pk %}" class="row g-2 align-items-center"
           id="movimentarForm" data-verificar-url="{% url 'chamados:verificar_ativo' chamado.pk %}">
         {% csrf_token %}
-        <div class="flex-grow-1" style="min-width: 200px;">
-            <label class="form-label" for="movimentarPatrimonio">Nº de patrimônio</label>
-            <input type="text" name="patrimonio" id="movimentarPatrimonio" class="form-control" placeholder="Digite o patrimônio do ativo..." autocomplete="off" required>
+        <div class="col-md-4">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text bg-transparent text-muted-hd border-end-0"><i class="bi bi-hash"></i></span>
+                <input type="text" name="patrimonio" id="movimentarPatrimonio" class="form-control border-start-0 ps-0"
+                       placeholder="Nº de patrimônio" aria-label="Nº de patrimônio" autocomplete="off" required>
+            </div>
         </div>
-        <div class="flex-grow-1" style="min-width: 240px;">
-            <label class="form-label d-flex justify-content-between gap-2" for="movimentarFuncionarioBusca">
-                <span>Atribuir a funcionário de {{ chamado.setor }} <span class="text-muted-hd small">(opcional)</span></span>
-                {% if chamado.solicitante in funcionarios_atribuiveis %}
-                <button type="button" class="btn btn-link btn-sm p-0" id="movimentarUsarSolicitante"
-                        data-id="{{ chamado.solicitante.pk }}"
-                        data-label="{{ chamado.solicitante.get_full_name|default:chamado.solicitante.username }} — {{ chamado.solicitante.matricula }}">Usar solicitante</button>
-                {% endif %}
-            </label>
+        <div class="col-md-5">
             <div class="position-relative">
-                <input type="text" class="form-control" id="movimentarFuncionarioBusca" autocomplete="off"
-                       {% if funcionarios_atribuiveis %}placeholder="Nome ou matrícula (ex.: notebook, celular)"{% else %}placeholder="Nenhum usuário ativo lotado em {{ chamado.setor }}" disabled{% endif %}
-                       data-autocomplete-input
-                       data-autocomplete-hidden="movimentarFuncionario"
-                       data-autocomplete-opcoes="movimentarFuncionarioOpcoes"
-                       data-autocomplete-sugestoes="movimentarFuncionarioSugestoes">
+                <div class="input-group input-group-sm">
+                    <input type="text" class="form-control" id="movimentarFuncionarioBusca" autocomplete="off"
+                           aria-label="Atribuir a funcionário de {{ chamado.setor }} (opcional)"
+                           {% if funcionarios_atribuiveis %}placeholder="Funcionário de {{ chamado.setor }} (opcional)"{% else %}placeholder="Nenhum usuário ativo lotado em {{ chamado.setor }}" disabled{% endif %}
+                           data-autocomplete-input
+                           data-autocomplete-hidden="movimentarFuncionario"
+                           data-autocomplete-opcoes="movimentarFuncionarioOpcoes"
+                           data-autocomplete-sugestoes="movimentarFuncionarioSugestoes">
+                    {% if chamado.solicitante in funcionarios_atribuiveis %}
+                    <button type="button" class="btn btn-outline-secondary" id="movimentarUsarSolicitante"
+                            data-id="{{ chamado.solicitante.pk }}"
+                            data-label="{{ chamado.solicitante.get_full_name|default:chamado.solicitante.username }} — {{ chamado.solicitante.matricula }}">Usar solicitante</button>
+                    {% endif %}
+                </div>
                 <div id="movimentarFuncionarioSugestoes" class="list-group position-absolute w-100 d-none" style="z-index: 1000; max-height: 220px; overflow-y: auto;"></div>
                 <div id="movimentarFuncionarioOpcoes" class="d-none">
                     {% for func in funcionarios_atribuiveis %}
@@ -325,12 +388,12 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
             <input type="hidden" name="funcionario" id="movimentarFuncionario">
         </div>
-        <button type="submit" class="btn btn-primary" id="movimentarBtn" disabled><i class="bi bi-box-arrow-in-right"></i> Registrar movimentação</button>
+        <div class="col-md-3">
+            <button type="submit" class="btn btn-primary btn-sm w-100" id="movimentarBtn" disabled><i class="bi bi-check2-circle me-1"></i> Registrar</button>
+        </div>
     </form>
-    <div id="movimentarFeedback" class="alert mt-2 mb-0 py-2 d-none" role="status" aria-live="polite"></div>
-    <div class="form-text mt-2">
-        Sem funcionário: ativo lotado na <strong>TI</strong> &rarr; entrada em <strong>{{ chamado.setor }}</strong>; ativo lotado em <strong>{{ chamado.setor }}</strong> ou atribuído a alguém &rarr; volta pra TI.<br>
-        Com funcionário: ativo disponível na <strong>TI</strong> &rarr; fica atribuído à pessoa (ex.: notebook, smartphone).
+    <div id="movimentarFeedback" class="mt-2 small text-muted-hd" role="status" aria-live="polite">
+        <i class="bi bi-info-circle me-1"></i>Digite o patrimônio para ver o destino.
     </div>
 </div>
 {% endif %}
@@ -355,8 +418,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
 {% if pode_editar %}
 <div class="mb-4 text-center">
-    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#confirmarFecharModal">
-        <i class="bi bi-check-circle-fill"></i> Fechar chamado
+    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#encerrarModal">
+        <i class="bi bi-check-circle-fill"></i> Encerrar chamado
     </button>
 </div>
 {% endif %}
@@ -413,23 +476,30 @@ document.addEventListener('DOMContentLoaded', function () {
     </div>
 </div>
 
-<div class="modal fade" id="confirmarFecharModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+{# Encerrar: as anotações de encerramento são obrigatórias e públicas (o solicitante vê o que foi feito). #}
+<div class="modal fade" id="encerrarModal" tabindex="-1" aria-labelledby="encerrarModalTitulo" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
-            <div class="modal-header">
-                <h2 class="modal-title h5"><i class="bi bi-check-circle-fill text-success"></i> Fechar chamado</h2>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-            </div>
-            <div class="modal-body">
-                <p class="mb-0">Fechar o chamado <strong>{{ chamado.codigo }}</strong>? Essa ação encerra o atendimento; o solicitante ainda pode reabri-lo em até {{ dias_reabertura }}.</p>
-                {% if movimentacoes_pendentes %}
-                <p class="mb-0 mt-2 small text-muted-hd"><i class="bi bi-hourglass-split"></i> {{ movimentacoes_pendentes|length }} movimentação(ões) de ativo pendente(s) será(ão) efetivada(s) junto.</p>
-                {% endif %}
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-success" id="confirmarFecharBtn"><i class="bi bi-check-circle-fill"></i> Sim, fechar</button>
-            </div>
+            <form method="post" action="{% url 'chamados:fechar' chamado.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="encerrarModalTitulo"><i class="bi bi-check-circle-fill text-success"></i> Encerrar chamado {{ chamado.codigo }}</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label fw-semibold" for="encerrarNotas">Anotações de encerramento</label>
+                    <textarea name="notas" id="encerrarNotas" class="form-control" rows="5" required
+                              placeholder="O que foi feito para resolver?"></textarea>
+                    <div class="form-text"><i class="bi bi-eye"></i> Visível para o solicitante. Ele ainda pode reabrir o chamado em até {{ dias_reabertura }}.</div>
+                    {% if movimentacoes_pendentes %}
+                    <p class="mb-0 mt-3 small text-muted-hd"><i class="bi bi-hourglass-split"></i> {{ movimentacoes_pendentes|length }} movimentação(ões) de ativo pendente(s) será(ão) efetivada(s) junto.</p>
+                    {% endif %}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success"><i class="bi bi-check-circle-fill"></i> Encerrar chamado</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -449,20 +519,38 @@ document.addEventListener('DOMContentLoaded', function () {
     var timer = null;
     var ultimaConsulta = 0;
 
-    function mostrar(ok, mensagem) {
-        feedback.className = 'alert mt-2 mb-0 py-2 ' + (ok ? 'alert-success' : 'alert-danger');
+    // Linha de feedback abaixo do formulário: orientação (cinza), destino (verde) ou problema (vermelho).
+    // `link` opcional ({url, texto}): ex. o chamado que já tem uma movimentação pendente do ativo.
+    function escrever(classe, iconeClasse, mensagem, link) {
+        feedback.className = 'mt-2 small ' + classe;
         feedback.innerHTML = '';
         var icone = document.createElement('i');
-        icone.className = 'bi me-1 ' + (ok ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill');
+        icone.className = 'bi me-1 ' + iconeClasse;
         feedback.appendChild(icone);
         feedback.appendChild(document.createTextNode(mensagem));
+        if (link) {
+            var a = document.createElement('a');
+            a.href = link.url;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            a.className = 'ms-2 fw-semibold link-danger';
+            a.textContent = link.texto + ' ';
+            var seta = document.createElement('i');
+            seta.className = 'bi bi-box-arrow-up-right';
+            a.appendChild(seta);
+            feedback.appendChild(a);
+        }
+    }
+
+    function mostrar(ok, mensagem, link) {
+        escrever(ok ? 'text-success' : 'text-danger', ok ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill', mensagem, link);
         campo.classList.toggle('is-invalid', !ok);
         campo.classList.toggle('is-valid', ok);
         botao.disabled = !ok;
     }
 
     function limpar() {
-        feedback.className = 'alert mt-2 mb-0 py-2 d-none';
+        escrever('text-muted-hd', 'bi-info-circle', 'Digite o patrimônio para ver o destino.');
         campo.classList.remove('is-invalid', 'is-valid');
         botao.disabled = true;
     }
@@ -486,7 +574,7 @@ document.addEventListener('DOMContentLoaded', function () {
             })
                 .then(function (resposta) { return resposta.json(); })
                 .then(function (dados) {
-                    if (consulta === ultimaConsulta) mostrar(dados.ok, dados.mensagem);
+                    if (consulta === ultimaConsulta) mostrar(dados.ok, dados.mensagem, dados.link);
                 })
                 .catch(function () {
                     // Sem verificação (ex.: rede): libera o envio, o servidor valida de novo no POST.
@@ -518,14 +606,11 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
+// Modal de encerramento: foco direto no campo das anotações.
 document.addEventListener('DOMContentLoaded', function () {
-    var botaoConfirmar = document.getElementById('confirmarFecharBtn');
-    if (botaoConfirmar) {
-        botaoConfirmar.addEventListener('click', function () {
-            var form = document.getElementById('procedimentoForm');
-            form.action = '{% url "chamados:fechar" chamado.pk %}';
-            form.submit();
-        });
+    var modal = document.getElementById('encerrarModal');
+    if (modal) {
+        modal.addEventListener('shown.bs.modal', function () { document.getElementById('encerrarNotas').focus(); });
     }
 });
 </script>

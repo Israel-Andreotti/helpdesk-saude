@@ -15,8 +15,9 @@ from django.utils import timezone
 from django.views.generic import CreateView, DetailView, ListView, UpdateView, View
 
 from ativos.models import Ativo, MovimentacaoAtivo
-from core.mixins import AdministradorRequiredMixin, AtendenteRequiredMixin
-from usuarios.models import Setor, Usuario
+from core.mixins import AdministradorRequiredMixin, AtendenteRequiredMixin, BuscaObrigatoriaMixin
+from usuarios.ativacao import gerar_link_ativacao
+from usuarios.models import Setor, Usuario, padronizar_nome
 
 from .forms import (
     CategoriaForm,
@@ -26,8 +27,8 @@ from .forms import (
     SubcategoriaForm,
 )
 from .models import (
-    PREFIXO_CODIGO, Categoria, Chamado, EventoChamado, Prioridade, ProcedimentoEntry, SLAPrioridade, Subcategoria,
-    TipoChamado, formatar_codigo,
+    PREFIXO_CODIGO, Categoria, Chamado, EventoChamado, Prioridade, ProcedimentoEntry, SLAPrioridade,
+    SolicitacaoUsuario, Subcategoria, TipoChamado, formatar_codigo,
 )
 
 # Ordem de urgência (mais urgente primeiro) e descrição curta de cada prioridade,
@@ -66,6 +67,42 @@ ORDENACOES_CHAMADO = {
     'recentes': ('Mais recentes', ('-criado_em',)),
     'antigos': ('Mais antigos', ('criado_em',)),
 }
+
+
+# Colunas da fila da equipe, na ordem padrão: chave -> rótulo. Cada técnico pode ocultar e reordenar
+# (menu "Colunas" e arrastando o cabeçalho), salvo em Usuario.colunas_fila; o código do chamado é fixo.
+COLUNAS_FILA = {
+    'codigo': 'Chamado',
+    'prioridade': 'Prioridade',
+    'status': 'Status',
+    'titulo': 'Título',
+    'setor': 'Setor',
+    'solicitante': 'Solicitante',
+    'tecnico': 'Técnico',
+    'criado_em': 'Criado em',
+    'prazo_sla': 'Prazo SLA',
+}
+COLUNA_FILA_FIXA = 'codigo'
+
+
+def preferencia_colunas_fila(ordem=(), ocultas=()):
+    """Normaliza uma escolha de colunas: ignora chaves desconhecidas e repetidas, completa as que
+    faltarem na posição padrão e mantém a coluna fixa visível e em primeiro lugar."""
+    ordem = [c for c in dict.fromkeys(ordem) if c in COLUNAS_FILA and c != COLUNA_FILA_FIXA]
+    ordem += [c for c in COLUNAS_FILA if c not in ordem and c != COLUNA_FILA_FIXA]
+    ocultas = [c for c in dict.fromkeys(ocultas) if c in COLUNAS_FILA and c != COLUNA_FILA_FIXA]
+    return {'ordem': ordem, 'ocultas': ocultas}
+
+
+def colunas_fila(usuario=None):
+    """Colunas da fila na ordem escolhida pelo usuário (padrão se ele não escolheu ou é None)."""
+    preferencia = (usuario.colunas_fila if usuario else None) or {}
+    preferencia = preferencia_colunas_fila(preferencia.get('ordem', ()), preferencia.get('ocultas', ()))
+    return [
+        {'chave': chave, 'rotulo': COLUNAS_FILA[chave], 'visivel': chave not in preferencia['ocultas'],
+         'fixa': chave == COLUNA_FILA_FIXA}
+        for chave in [COLUNA_FILA_FIXA] + preferencia['ordem']
+    ]
 
 
 class Segundos(Func):
@@ -115,6 +152,12 @@ class ChamadoListView(LoginRequiredMixin, ListView):
 
     CHAVE_SESSAO_ORDEM = 'fila_chamados_ordem'
 
+    def get_aba(self):
+        """Solicitante vê "Meus chamados" em duas abas: em aberto (padrão) e fechados."""
+        if not self.request.user.is_solicitante():
+            return None
+        return 'fechados' if self.request.GET.get('aba') == 'fechados' else 'abertos'
+
     def get_ordem(self):
         """Ordenação da fila. A escolhida pelo usuário fica guardada na sessão, para continuar valendo
         ao recarregar a página ou voltar para a fila (até o logout). Sem escolha, o padrão é urgência
@@ -137,6 +180,10 @@ class ChamadoListView(LoginRequiredMixin, ListView):
         )
         if usuario.is_solicitante():
             qs = qs.filter(solicitante=usuario)
+            if self.get_aba() == 'fechados':
+                qs = qs.filter(status=Chamado.Status.FECHADO)
+            else:
+                qs = qs.exclude(status=Chamado.Status.FECHADO)
         else:
             # Fila de trabalho do técnico: só chamados ainda em aberto.
             qs = qs.exclude(status=Chamado.Status.FECHADO)
@@ -184,10 +231,16 @@ class ChamadoListView(LoginRequiredMixin, ListView):
         context['tipo_choices'] = TipoChamado.choices
         # A fila da equipe não mostra fechados (eles ficam no histórico), então o filtro também não
         # oferece essa opção; o solicitante vê os próprios fechados em "Meus chamados".
+        # Fechados ficam no histórico (equipe) ou na aba "Fechados" (solicitante): o filtro de status
+        # só oferece os status em aberto.
         context['status_choices'] = [
-            (valor, rotulo) for valor, rotulo in Chamado.Status.choices
-            if usuario.is_solicitante() or valor != Chamado.Status.FECHADO
+            (valor, rotulo) for valor, rotulo in Chamado.Status.choices if valor != Chamado.Status.FECHADO
         ]
+        context['aba'] = self.get_aba()
+        if usuario.is_solicitante():
+            meus = Chamado.objects.filter(solicitante=usuario)
+            context['total_fechados'] = meus.filter(status=Chamado.Status.FECHADO).count()
+            context['total_abertos'] = meus.exclude(status=Chamado.Status.FECHADO).count()
         context['categorias'] = Categoria.objects.order_by('ordem', 'nome')
         context['ordem_selecionada'] = self.get_ordem()
         context['ordenacoes'] = [(chave, rotulo) for chave, (rotulo, _) in ORDENACOES_CHAMADO.items()]
@@ -204,6 +257,12 @@ class ChamadoListView(LoginRequiredMixin, ListView):
                     solicitante=usuario, status=Chamado.Status.AGUARDANDO_SOLICITANTE
                 ).order_by('sla_pausado_em')
             )
+            context['fechados_para_avaliar'] = list(Chamado.fechados_para_avaliar(usuario))
+            context['acessos_prontos'] = list(SolicitacaoUsuario.links_prontos(usuario))
+            context['prazo_reabertura'] = Chamado.prazo_reabertura_display()
+        # O solicitante sempre vê as colunas padrão; só a equipe personaliza.
+        context['colunas'] = colunas_fila(None if usuario.is_solicitante() else usuario)
+        context['colunas_padrao'] = list(COLUNAS_FILA.items())
         if not usuario.is_solicitante():
             context['atendente_selecionado'] = self.request.GET.get('atendente', '')
             context['tecnicos'] = usuario.__class__.objects.filter(
@@ -212,30 +271,88 @@ class ChamadoListView(LoginRequiredMixin, ListView):
         return context
 
 
-class ChamadoHistoricoView(AtendenteRequiredMixin, ListView):
-    model = Chamado
+class ChamadoColunasFilaView(AtendenteRequiredMixin, View):
+    """Salva as colunas da fila do técnico (chamado pelo JS da fila, sem recarregar a página).
+    POST: `ordem` e `ocultas` (listas de chaves) ou `restaurar=1` para voltar ao padrão."""
+
+    def post(self, request):
+        usuario = request.user
+        if request.POST.get('restaurar'):
+            usuario.colunas_fila = {}
+        else:
+            usuario.colunas_fila = preferencia_colunas_fila(
+                request.POST.getlist('ordem'), request.POST.getlist('ocultas')
+            )
+        usuario.save(update_fields=['colunas_fila'])
+        return JsonResponse({'colunas': colunas_fila(usuario)})
+
+
+class ChamadoNovoLinkAtivacaoView(AtendenteRequiredMixin, ChamadoEditavelMixin, View):
+    """Pedido de novo usuário: gera um novo link de ativação (ex.: o anterior expirou). O link antigo
+    deixa de valer na hora."""
+
+    @transaction.atomic
+    def post(self, request, pk):
+        chamado = get_object_or_404(Chamado, pk=pk)
+        solicitacao = SolicitacaoUsuario.objects.select_related('usuario').filter(chamado=chamado).first()
+        if not solicitacao or not solicitacao.usuario:
+            messages.error(request, 'Este chamado não tem um usuário criado para ativar.')
+        elif solicitacao.ativado_em:
+            messages.info(request, 'Esta conta já foi ativada.')
+        else:
+            solicitacao.link_ativacao = gerar_link_ativacao(solicitacao.usuario)
+            solicitacao.link_gerado_em = timezone.now()
+            solicitacao.save(update_fields=['link_ativacao', 'link_gerado_em'])
+            chamado.registrar_evento(
+                EventoChamado.Tipo.USUARIO_CRIADO, request.user,
+                f'Gerou um novo link de ativação para "{solicitacao.usuario.username}" (o anterior deixou de valer).',
+            )
+            messages.success(request, 'Novo link de ativação gerado. O gestor já pode copiá-lo no chamado.')
+        return redirect('chamados:detail', pk=pk)
+
+
+class ChamadoHistoricoView(AtendenteRequiredMixin, BuscaObrigatoriaMixin, ListView):
     template_name = 'chamados/chamado_historico.html'
     context_object_name = 'chamados'
     paginate_by = 20
+    queryset = Chamado.objects.select_related(
+        'solicitante', 'solicitante__setor', 'atendente', 'atendente__setor', 'categoria', 'subcategoria'
+    ).filter(status=Chamado.Status.FECHADO).order_by('-atualizado_em')
 
-    def get_queryset(self):
-        qs = Chamado.objects.select_related(
-            'solicitante', 'solicitante__setor', 'atendente', 'atendente__setor', 'categoria', 'subcategoria'
-        ).filter(
-            status=Chamado.Status.FECHADO
-        ).order_by('-atualizado_em')
-        termo = self.request.GET.get('q', '').strip()
+    def filtrar(self, qs):
+        termo = self.filtro('q')
         if termo:
             qs = qs.filter(
                 filtro_busca_chamado(termo)
                 | models.Q(descricao__icontains=termo)
                 | models.Q(solicitante__username__icontains=termo)
+                | models.Q(solicitante__first_name__icontains=termo)
+                | models.Q(solicitante__last_name__icontains=termo)
             )
+        if self.filtro('tipo') in TipoChamado.values:
+            qs = qs.filter(tipo=self.filtro('tipo'))
+        if self.filtro('prioridade') in Prioridade.values:
+            qs = qs.filter(prioridade=self.filtro('prioridade'))
+        for campo in ('categoria', 'setor', 'atendente'):
+            valor = self.filtro_id(campo)
+            if valor:
+                qs = qs.filter(**{f'{campo}_id': valor})
+        de, ate = self.filtro_data('de'), self.filtro_data('ate')
+        if de:
+            qs = qs.filter(fechado_em__date__gte=de)
+        if ate:
+            qs = qs.filter(fechado_em__date__lte=ate)
         return qs
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['q'] = self.request.GET.get('q', '')
+        context['tipo_choices'] = TipoChamado.choices
+        context['prioridade_choices'] = Prioridade.choices
+        context['categorias'] = Categoria.objects.order_by('ordem', 'nome')
+        context['setores'] = Setor.objects.order_by('nome')
+        context['tecnicos'] = Usuario.objects.filter(
+            perfil__in=[Usuario.Perfil.ATENDENTE, Usuario.Perfil.ADMINISTRADOR]
+        ).order_by('first_name', 'username')
         return context
 
 
@@ -263,13 +380,19 @@ class ChamadoDetailView(LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         context['pode_gerenciar'] = self.request.user.is_authenticated and not self.request.user.is_solicitante()
         context['pode_editar'] = context['pode_gerenciar'] and not self.object.encerrado
+        # Pedido de novo usuário: dados do funcionário e o link de ativação (visível ao gestor e à equipe).
+        solicitacao = SolicitacaoUsuario.objects.select_related('usuario', 'setor').filter(chamado=self.object).first()
+        context['solicitacao_usuario'] = solicitacao
+        if solicitacao and solicitacao.link_ativacao and not solicitacao.link_expirado:
+            context['link_ativacao'] = self.request.build_absolute_uri(solicitacao.link_ativacao)
         context['dias_reabertura'] = Chamado.prazo_reabertura_display()
         if context['pode_gerenciar']:
             context['procedimento_form'] = ProcedimentoEntryForm(initial={'tipo': 'publico'})
             context['procedimentos'] = self.object.procedimentos.select_related('autor')
             Usuario = self.request.user.__class__
+            # Só técnicos ativos podem receber chamados (usuário desativado não entra no sistema).
             context['tecnicos'] = Usuario.objects.filter(
-                perfil__in=[Usuario.Perfil.ATENDENTE, Usuario.Perfil.ADMINISTRADOR]
+                perfil__in=[Usuario.Perfil.ATENDENTE, Usuario.Perfil.ADMINISTRADOR], is_active=True
             ).order_by('first_name', 'username')
             context['movimentacoes_pendentes'] = self.object.movimentacoes_ativo.filter(
                 status=MovimentacaoAtivo.Status.PENDENTE
@@ -324,6 +447,17 @@ class ChamadoCreateView(LoginRequiredMixin, CreateView):
             descricao += ' (elevada por setor crítico)'
         descricao += f', prazo de SLA {timezone.localtime(chamado.prazo_sla):%d/%m/%Y %H:%M}.'
         chamado.registrar_evento(EventoChamado.Tipo.ABERTURA, self.request.user, descricao)
+        if form.pede_usuario:
+            dados = form.cleaned_data
+            SolicitacaoUsuario.objects.create(
+                chamado=chamado,
+                first_name=padronizar_nome(dados['novo_first_name']),
+                last_name=padronizar_nome(dados['novo_last_name'], continuacao=True),
+                email=dados['novo_email'],
+                telefone=dados['novo_telefone'],
+                # O funcionário entra no setor do gestor que pediu (ou no setor do chamado, se o gestor não tiver).
+                setor=self.request.user.setor or chamado.setor,
+            )
         messages.success(self.request, 'Chamado aberto com sucesso.')
         return response
 
@@ -375,16 +509,24 @@ class ProcedimentoEntryCreateView(AtendenteRequiredMixin, ChamadoEditavelMixin, 
 
 
 class ChamadoFecharView(AtendenteRequiredMixin, ChamadoEditavelMixin, View):
-    """Técnico terminou o atendimento e fecha o chamado. O solicitante ainda pode reabri-lo
-    durante Chamado.DIAS_REABERTURA dias e avaliar o atendimento."""
+    """Técnico terminou o atendimento e encerra o chamado, registrando (obrigatório) as anotações de
+    encerramento — o que foi feito —, públicas para o solicitante. Ele ainda pode reabri-lo durante
+    Chamado.DIAS_REABERTURA dias e avaliar o atendimento."""
 
     @transaction.atomic
     def post(self, request, pk):
         chamado = get_object_or_404(Chamado, pk=pk)
+        notas = (request.POST.get('notas') or '').strip()
+        if not notas:
+            messages.error(request, 'Escreva as anotações de encerramento (o que foi feito) para encerrar o chamado.')
+            return redirect('chamados:detail', pk=pk)
+        ProcedimentoEntry.objects.create(
+            chamado=chamado, autor=request.user, tipo=ProcedimentoEntry.Tipo.ENCERRAMENTO, texto=notas
+        )
         chamado.fechar()
         chamado.save()
         prazo = 'dentro do prazo de SLA' if chamado.fechado_no_prazo else 'fora do prazo de SLA'
-        chamado.registrar_evento(EventoChamado.Tipo.FECHADO, request.user, f'Fechou o chamado ({prazo}).')
+        chamado.registrar_evento(EventoChamado.Tipo.FECHADO, request.user, f'Encerrou o chamado ({prazo}).')
 
         pendentes = chamado.movimentacoes_ativo.filter(status=MovimentacaoAtivo.Status.PENDENTE).select_related('ativo')
         efetivadas = 0
@@ -399,7 +541,7 @@ class ChamadoFecharView(AtendenteRequiredMixin, ChamadoEditavelMixin, View):
             efetivadas += 1
 
         aviso = (
-            f'Chamado fechado. O solicitante pode reabri-lo em até {Chamado.prazo_reabertura_display()}.'
+            f'Chamado encerrado. O solicitante pode reabri-lo em até {Chamado.prazo_reabertura_display()}.'
         )
         if efetivadas:
             aviso += f' {efetivadas} movimentação(ões) de ativo efetivada(s).'
@@ -413,7 +555,7 @@ class ChamadoReatribuirView(AtendenteRequiredMixin, ChamadoEditavelMixin, View):
         Usuario = request.user.__class__
         tecnico_id = request.POST.get('atendente')
         tecnico = Usuario.objects.filter(
-            pk=tecnico_id, perfil__in=[Usuario.Perfil.ATENDENTE, Usuario.Perfil.ADMINISTRADOR]
+            pk=tecnico_id, perfil__in=[Usuario.Perfil.ATENDENTE, Usuario.Perfil.ADMINISTRADOR], is_active=True
         ).first()
         if not tecnico:
             messages.error(request, 'Selecione um técnico válido para reatribuir o chamado.')
@@ -586,8 +728,17 @@ def validar_movimentacao_ativo(chamado, patrimonio, funcionario_id=None):
     if not ativo:
         return None, None, None, f'Nenhum ativo encontrado com o patrimônio "{patrimonio}".'
 
-    if ativo.tem_movimentacao_pendente:
-        return ativo, None, None, f'O ativo "{ativo}" já tem uma movimentação pendente aguardando o fechamento de um chamado.'
+    pendente = ativo.movimentacao_pendente
+    if pendente:
+        if pendente.chamado_id == chamado.pk:
+            onde = 'neste chamado'
+        elif pendente.chamado:
+            onde = f'no chamado {pendente.chamado.codigo}'
+        else:
+            onde = 'em outro chamado'
+        return ativo, None, None, (
+            f'O ativo "{ativo}" já tem uma movimentação pendente {onde}, aguardando o fechamento dele.'
+        )
 
     setor_ti = Setor.objects.filter(nome='TI').first()
     if not setor_ti:
@@ -621,8 +772,7 @@ def validar_movimentacao_ativo(chamado, patrimonio, funcionario_id=None):
     if ativo.setor_id == setor_ti.pk:
         return ativo, chamado.setor, None, None
     return ativo, None, None, (
-        f'O ativo "{ativo}" está {lotacao}, não na TI nem em {chamado.setor} — '
-        'não é possível movimentar por este chamado.'
+        f'O ativo "{ativo}" está {lotacao}, não é possível movimentar por este chamado.'
     )
 
 
@@ -680,14 +830,22 @@ class ChamadoVerificarAtivoView(AtendenteRequiredMixin, ChamadoEditavelMixin, Vi
             chamado, request.GET.get('patrimonio', '').strip(), request.GET.get('funcionario', '').strip()
         )
         if erro:
-            return JsonResponse({'ok': False, 'mensagem': erro})
+            resposta = {'ok': False, 'mensagem': erro}
+            # Movimentação pendente em outro chamado: link para o técnico abrir esse chamado.
+            pendente = ativo.movimentacao_pendente if ativo else None
+            if pendente and pendente.chamado_id and pendente.chamado_id != chamado.pk:
+                resposta['link'] = {
+                    'url': reverse('chamados:detail', args=[pendente.chamado_id]),
+                    'texto': f'Abrir {pendente.chamado.codigo}',
+                }
+            return JsonResponse(resposta)
         if ativo.funcionario_id:
             # Devolução: deixa claro que o vínculo com a pessoa será desfeito.
             nome = ativo.funcionario.get_full_name() or ativo.funcionario.username
             mensagem = f'{ativo} será desatribuído de {nome} e devolvido à {setor}.'
         else:
             mensagem = f'{ativo} — {ativo.lotacao_display} → {destino_display(setor, funcionario)}.'
-        return JsonResponse({'ok': True, 'mensagem': f'{mensagem} Será efetivada ao fechar o chamado.'})
+        return JsonResponse({'ok': True, 'mensagem': f'{mensagem} Será efetivada ao encerrar o chamado.'})
 
 
 class ChamadoMovimentarAtivoView(AtendenteRequiredMixin, ChamadoEditavelMixin, View):
@@ -776,8 +934,8 @@ class CategoriaCadastroView(AdministradorRequiredMixin, CreateView):
 
 
 class CategoriaEditarView(AdministradorRequiredMixin, UpdateView):
-    """Edição de uma categoria do catálogo: nome e subcategorias (adicionar, excluir e trocar a
-    prioridade) — tudo concentrado aqui, fora da listagem do catálogo."""
+    """Edição de uma categoria do catálogo: nome e subcategorias (adicionar, excluir, renomear e trocar
+    tipo/prioridade, cada alteração salva na hora) — tudo concentrado aqui, fora da listagem do catálogo."""
 
     model = Categoria
     form_class = CategoriaForm
@@ -838,6 +996,31 @@ class SubcategoriaPrioridadeView(AdministradorRequiredMixin, View):
                 f'Prioridade de "{subcategoria.nome}" alterada para {subcategoria.get_prioridade_display()} '
                 '(vale para os próximos chamados).',
             )
+        return redirect('chamados:categoria_editar', pk=subcategoria.categoria_id)
+
+
+class SubcategoriaRenomearView(AdministradorRequiredMixin, View):
+    """Corrige o nome de uma subcategoria (campo editável direto na lista da tela da categoria).
+    Chamados já abertos mantêm o título com que foram abertos (copiado do nome na abertura)."""
+
+    def post(self, request, pk):
+        subcategoria = get_object_or_404(Subcategoria, pk=pk)
+        nome = request.POST.get('nome', '').strip()
+        tamanho_maximo = Subcategoria._meta.get_field('nome').max_length
+        repetido = Subcategoria.objects.filter(
+            categoria_id=subcategoria.categoria_id, nome__iexact=nome
+        ).exclude(pk=subcategoria.pk).exists()
+        if not nome:
+            messages.error(request, 'O nome da subcategoria não pode ficar vazio.')
+        elif len(nome) > tamanho_maximo:
+            messages.error(request, f'O nome da subcategoria pode ter no máximo {tamanho_maximo} caracteres.')
+        elif repetido:
+            messages.error(request, f'Já existe a subcategoria "{nome}" nesta categoria.')
+        elif nome != subcategoria.nome:
+            antigo = subcategoria.nome
+            subcategoria.nome = nome
+            subcategoria.save(update_fields=['nome'])
+            messages.success(request, f'Subcategoria "{antigo}" renomeada para "{nome}".')
         return redirect('chamados:categoria_editar', pk=subcategoria.categoria_id)
 
 

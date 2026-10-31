@@ -94,7 +94,7 @@ class GestaoDeUsuariosTests(TestCase):
         self.c.post(reverse('usuarios:toggle_ativo', args=[super_admin.pk]))
         self.c.post(reverse('usuarios:resetar_senha', args=[super_admin.pk]))
         edicao = self.c.get(reverse('usuarios:editar', args=[super_admin.pk]))
-        lista = self.c.get(reverse('usuarios:list'))
+        lista = self.c.get(reverse('usuarios:list'), {'buscar': '1'})
 
         super_admin.refresh_from_db()
         self.assertTrue(super_admin.is_active)
@@ -191,6 +191,26 @@ class ListaDeUsuariosTests(TestCase):
         self.assertEqual(self.listar(q='anabela', status='inativo'), {self.inativo})
         self.assertEqual(self.listar(q=self.solicitante.matricula), {self.solicitante})
 
+    def test_ordenacao(self):
+        nomes = lambda ordem: [u.last_name for u in self.c.get(
+            reverse('usuarios:list'), {'q': 'anabela', 'ordem': ordem}
+        ).context['usuarios']]
+
+        self.assertEqual(nomes('nome'), ['Costa', 'Prado', 'Reis'])
+        self.assertEqual(nomes('recentes'), ['Costa', 'Reis', 'Prado'])
+        self.assertEqual(nomes('perfil')[0], 'Reis')  # atendente vem antes de solicitante
+
+    def test_so_lista_depois_de_buscar(self):
+        self.assertEqual(self.listar(), set())
+        self.assertTrue({self.solicitante, self.tecnico, self.inativo} <= self.listar(buscar='1'))
+
+    def test_filtros_de_setor_e_vip(self):
+        setor = criar_setor()
+        vip = criar_solicitante(setor=setor, first_name='Anabela', vip=True)
+        self.assertEqual(self.listar(setor=setor.pk), {vip})
+        self.assertEqual(self.listar(q='anabela', vip='sim'), {vip})
+        self.assertNotIn(vip, self.listar(q='anabela', vip='nao'))
+
 
 class SetoresTests(TestCase):
     def setUp(self):
@@ -211,3 +231,22 @@ class SetoresTests(TestCase):
         self.c.post(url)
         setor.refresh_from_db()
         self.assertFalse(setor.critico)
+
+
+class PadronizacaoDeNomesTests(TestCase):
+    """Nome e sobrenome são gravados com iniciais maiúsculas; partículas (da, de, dos, e...) minúsculas."""
+
+    def test_funcao(self):
+        from usuarios.models import padronizar_nome
+
+        self.assertEqual(padronizar_nome('  paulo   RICARDO '), 'Paulo Ricardo')
+        self.assertEqual(padronizar_nome("ana-clara d'ávila"), "Ana-Clara D'Ávila")
+        self.assertEqual(padronizar_nome('DE souza e silva'), 'De Souza e Silva')  # 1ª palavra do nome
+        self.assertEqual(padronizar_nome('da silva', continuacao=True), 'da Silva')  # sobrenome segue o nome
+
+    def test_save_padroniza(self):
+        from tests.fabricas import criar_solicitante
+
+        usuario = criar_solicitante(first_name='henrique', last_name='DOS santos BOFF')
+        usuario.refresh_from_db()
+        self.assertEqual(usuario.get_full_name(), 'Henrique dos Santos Boff')

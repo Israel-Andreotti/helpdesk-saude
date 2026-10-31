@@ -1,10 +1,12 @@
-"""Filtros e tags de template (core/templatetags/chamado_extras.py) e o dashboard."""
+"""Filtros e tags de template (core/templatetags/chamado_extras.py) e a raiz do site."""
 
 from datetime import timedelta
+from unittest import mock
 
 from django.contrib.auth.models import AnonymousUser
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from chamados.models import Chamado
 from core.templatetags.chamado_extras import (
@@ -59,14 +61,32 @@ class ContadoresDoMenuTests(TestCase):
         self.assertEqual(respostas_nao_vistas(AnonymousUser()), 0)
 
 
-class DashboardTests(TestCase):
+class SlaDistanciaTests(TestCase):
+    def test_formata_tempo_ate_ou_desde_o_prazo(self):
+        from core.templatetags.chamado_extras import sla_distancia
+
+        chamado = criar_chamado()
+        agora = timezone.now()
+        casos = [
+            (timedelta(minutes=12, seconds=30), '12min'),
+            (timedelta(hours=2), '2h'),
+            (timedelta(hours=2, minutes=15, seconds=30), '2h 15min'),
+            (-timedelta(days=3, hours=4, seconds=30), '3d 4h'),
+            (-timedelta(days=1, seconds=30), '1d'),
+        ]
+        with mock.patch('django.utils.timezone.now', return_value=agora):
+            for diferenca, esperado in casos:
+                chamado.prazo_sla = agora + diferenca
+                self.assertEqual(sla_distancia(chamado), esperado)
+
+
+class InicioTests(TestCase):
     def test_exige_login(self):
-        resposta = cliente().get(reverse('core:dashboard'))
+        resposta = cliente().get(reverse('core:inicio'))
 
         self.assertEqual(resposta.status_code, 302)
         self.assertIn(reverse('usuarios:login'), resposta.url)
 
-    def test_usuario_logado_ve_o_dashboard(self):
-        usuario = criar_solicitante()
-
-        self.assertEqual(cliente(usuario).get(reverse('core:dashboard')).context['usuario'], usuario)
+    def test_redireciona_para_a_tela_do_perfil(self):
+        self.assertRedirects(cliente(criar_solicitante()).get(reverse('core:inicio')), reverse('chamados:create'))
+        self.assertRedirects(cliente(criar_tecnico()).get(reverse('core:inicio')), reverse('chamados:list'))
